@@ -97,10 +97,10 @@ const (
 	URIUserSessionRenew      string = "/session/refresh_token"
 	URIUserProfile           string = "/user/profile"
 	URIFullUserProfile       string = "/oms/user/profile/full"
-	URIUserMargins           string = "/user/margins"
+	URIUserMargins           string = "/oms/user/margins"
 	URIUserMarginsSegment    string = "/user/margins/%s" // "/user/margins/{segment}"
 
-	URIGetOrders       string = "/orders"
+	URIGetOrders       string = "/oms/orders"
 	URIGetTrades       string = "/trades"
 	URIGetOrderHistory string = "/orders/%s"        // "/orders/{order_id}"
 	URIGetOrderTrades  string = "/orders/%s/trades" // "/orders/{order_id}/trades"
@@ -108,8 +108,8 @@ const (
 	URIModifyOrder     string = "/orders/%s/%s"     // "/orders/{variety}/{order_id}"
 	URICancelOrder     string = "/orders/%s/%s"     // "/orders/{variety}/{order_id}"
 
-	URIGetPositions       string = "/portfolio/positions"
-	URIGetHoldings        string = "/portfolio/holdings"
+	URIGetPositions       string = "/oms/portfolio/positions"
+	URIGetHoldings        string = "/oms/portfolio/holdings"
 	URIInitHoldingsAuth   string = "/portfolio/holdings/authorise"
 	URIAuctionInstruments string = "/portfolio/holdings/auctions"
 	URIConvertPosition    string = "/portfolio/positions"

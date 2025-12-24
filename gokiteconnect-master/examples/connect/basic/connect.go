@@ -33,9 +33,27 @@ func main() {
 	fmt.Println("profile: ", profile)
 
 	// Get margins
-	// margins, err := kc.GetUserMargins()
-	// if err != nil {
-	// 	fmt.Printf("Error getting margins: %v", err)
-	// }
-	// fmt.Println("margins: ", margins)
+	margins, err := kc.GetUserMargins()
+	if err != nil {
+		fmt.Printf("Error getting margins: %v", err)
+	}
+	fmt.Println("margins: ", margins)
+
+	holdings,err := kc.GetHoldings()
+	if err != nil {
+		fmt.Printf("Error getting holdings: %v", err)
+	}
+	fmt.Println("holdings: ", holdings)
+
+	positions,err := kc.GetPositions()
+	if err != nil {
+		fmt.Printf("Error getting positions: %v", err)
+	}
+	fmt.Println("positions: ", positions)
+
+	orders,err := kc.GetOrders()
+	if err != nil {
+		fmt.Printf("Error getting orders: %v", err)
+	}
+	fmt.Println("orders: ", orders)
 }
