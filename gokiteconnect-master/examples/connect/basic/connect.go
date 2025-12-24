@@ -4,39 +4,38 @@ import (
 	"fmt"
 
 	kiteconnect "gokiteconnect-master"
+	"os"
+
+	"github.com/joho/godotenv"
 )
 
-const (
-	apiKey    string = "my_api_key"
-	apiSecret string = "my_api_secret"
-)
+// const (
+// 	apiKey    string = "my_api_key"
+// 	apiSecret string = "my_api_secret"
+// )
 
 func main() {
+	err := godotenv.Load("../../../../.env")
+    if err != nil {
+        panic("Error loading .env file")
+    }
+
 	// Create a new Kite connect instance
-	kc := kiteconnect.New(apiKey)
+	encToken := os.Getenv("ENCTOKEN")
+	fmt.Println("encToken: ", encToken)
+	kc := kiteconnect.NewWithEncToken(encToken)
 
-	// Login URL from which request token can be obtained
-	fmt.Println(kc.GetLoginURL())
-
-	// Obtained request token after Kite Connect login flow
-	// simulated here by scanning from stdin
-	var requestToken string
-	fmt.Scanf("%s\n", &requestToken)
-
-	// Get user details and access token
-	data, err := kc.GenerateSession(requestToken, apiSecret)
+	//Get Full User Profile
+	profile, err := kc.GetFullUserProfile()
 	if err != nil {
-		fmt.Printf("Error: %v", err)
-		return
+		fmt.Printf("Error getting full user profile: %v", err)
 	}
-
-	// Set access token
-	kc.SetAccessToken(data.AccessToken)
+	fmt.Println("profile: ", profile)
 
 	// Get margins
-	margins, err := kc.GetUserMargins()
-	if err != nil {
-		fmt.Printf("Error getting margins: %v", err)
-	}
-	fmt.Println("margins: ", margins)
+	// margins, err := kc.GetUserMargins()
+	// if err != nil {
+	// 	fmt.Printf("Error getting margins: %v", err)
+	// }
+	// fmt.Println("margins: ", margins)
 }
