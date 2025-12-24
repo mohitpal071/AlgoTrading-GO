@@ -18,6 +18,7 @@ type PlainResponse struct {
 type Client struct {
 	apiKey      string
 	accessToken string
+	encToken    string
 	debug       bool
 	baseURI     string
 	httpClient  HTTPClient
@@ -95,7 +96,7 @@ const (
 	URIUserSessionInvalidate string = "/session/token"
 	URIUserSessionRenew      string = "/session/refresh_token"
 	URIUserProfile           string = "/user/profile"
-	URIFullUserProfile       string = "/user/profile/full"
+	URIFullUserProfile       string = "/oms/user/profile/full"
 	URIUserMargins           string = "/user/margins"
 	URIUserMarginsSegment    string = "/user/margins/%s" // "/user/margins/{segment}"
 
@@ -164,6 +165,21 @@ func New(apiKey string) *Client {
 	return client
 }
 
+// NewWithEncToken creates a new Kite Connect client with enc token.
+func NewWithEncToken(encToken string) *Client {
+	client := &Client{
+		encToken: encToken,
+		baseURI:  kiteBaseURI,
+	}
+
+	// Create a default http handler with default timeout.
+	client.SetHTTPClient(&http.Client{
+		Timeout: requestTimeout,
+	})
+
+	return client
+}
+
 // SetHTTPClient overrides default http handler with a custom one.
 // This can be used to set custom timeouts and transport.
 func (c *Client) SetHTTPClient(h *http.Client) {
@@ -217,11 +233,15 @@ func (c *Client) doEnvelope(method, uri string, params url.Values, headers http.
 	headers.Add("X-Kite-Version", kiteHeaderVersion)
 	headers.Add("User-Agent", name+"/"+version)
 
-	if c.apiKey != "" && c.accessToken != "" {
+	if c.encToken != "" {
+		authHeader := fmt.Sprintf("enctoken %s", c.encToken)
+		headers.Add("Authorization", authHeader)
+	} else if c.apiKey != "" && c.accessToken != "" {
 		authHeader := fmt.Sprintf("token %s:%s", c.apiKey, c.accessToken)
 		headers.Add("Authorization", authHeader)
 	}
 
+	fmt.Printf("%s%s", c.baseURI, uri)
 	return c.httpClient.DoEnvelope(method, c.baseURI+uri, params, headers, v)
 }
 
