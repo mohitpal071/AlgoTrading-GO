@@ -28,7 +28,7 @@ type Ticker struct {
 
 	apiKey      string
 	accessToken string
-
+	encToken    string
 	url                 url.URL
 	callbacks           callbacks
 	lastPingTime        atomicTime
@@ -153,14 +153,29 @@ const (
 
 var (
 	// Default ticker url.
-	tickerURL = url.URL{Scheme: "wss", Host: "ws.kite.trade"}
+	tickerURL = url.URL{Scheme: "wss", Host: "ws.zerodha.com"}
 )
 
 // New creates a new ticker instance.
-func New(apiKey string, accessToken string) *Ticker {
+func New(apiKey string, accessToken string, encToken string) *Ticker {
 	ticker := &Ticker{
 		apiKey:              apiKey,
 		accessToken:         accessToken,
+		encToken:            encToken,
+		url:                 tickerURL,
+		autoReconnect:       true,
+		reconnectMaxDelay:   defaultReconnectMaxDelay,
+		reconnectMaxRetries: defaultReconnectMaxAttempts,
+		connectTimeout:      defaultConnectTimeout,
+		subscribedTokens:    map[uint32]Mode{},
+	}
+
+	return ticker
+}
+
+func NewWithEncToken(encToken string) *Ticker {
+	ticker := &Ticker{
+		encToken:            encToken,
 		url:                 tickerURL,
 		autoReconnect:       true,
 		reconnectMaxDelay:   defaultReconnectMaxDelay,
@@ -290,8 +305,13 @@ func (t *Ticker) ServeWithContext(ctx context.Context) {
 
 			// Prepare ticker URL with required params.
 			q := t.url.Query()
-			q.Set("api_key", t.apiKey)
-			q.Set("access_token", t.accessToken)
+			// q.Set("api_key", t.apiKey)
+			// q.Set("access_token", t.accessToken)
+			q.Set("enctoken", t.encToken)
+			q.Set("api_key", "kitefront")
+			q.Set("user_id", "VM2107")
+			q.Set("user-agent", "kite3-web")
+			q.Set("version", "3.0.0")
 			t.url.RawQuery = q.Encode()
 
 			// create a dialer

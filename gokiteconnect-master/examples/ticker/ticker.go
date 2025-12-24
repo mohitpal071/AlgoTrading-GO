@@ -10,6 +10,8 @@ import (
 	kiteticker "gokiteconnect-master/ticker"
 
 	kiteconnect "gokiteconnect-master"
+	"github.com/joho/godotenv"
+
 )
 
 var (
@@ -69,27 +71,18 @@ func onOrderUpdate(order kiteconnect.Order) {
 }
 
 func main() {
-	// Create a new Kite connect instance
-	kc := kiteconnect.New(apiKey)
 
-	// Login URL from which request token can be obtained
-	fmt.Println(kc.GetLoginURL())
+	err := godotenv.Load("../../../.env")
+    if err != nil {
+        panic("Error loading .env file")
+    }
 
-	// Obtained request token after Kite Connect login flow
-	// simulated here by scanning from stdin
-	var requestToken string
-	fmt.Println("Enter request token:")
-	fmt.Scanf("%s\n", &requestToken)
+	encToken := os.Getenv("ENCTOKEN")
+	fmt.Println("encToken: ", encToken)
 
-	// Get user details and access token
-	data, err := kc.GenerateSession(requestToken, apiSecret)
-	if err != nil {
-		fmt.Printf("Error: %v", err)
-		return
-	}
 
 	// Create new Kite ticker instance
-	ticker = kiteticker.New(apiKey, data.AccessToken)
+	ticker = kiteticker.NewWithEncToken(encToken)
 
 	// Assign callbacks
 	ticker.OnError(onError)
