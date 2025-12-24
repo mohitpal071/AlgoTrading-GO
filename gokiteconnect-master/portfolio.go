@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"net/url"
 
+	"gokiteconnect-master/models"
+
 	"github.com/google/go-querystring/query"
-	"github.com/zerodha/gokiteconnect/v4/models"
 )
 
 const (

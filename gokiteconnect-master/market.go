@@ -6,9 +6,10 @@ import (
 	"net/url"
 	"time"
 
+	"gokiteconnect-master/models"
+
 	"github.com/gocarina/gocsv"
 	"github.com/google/go-querystring/query"
-	"github.com/zerodha/gokiteconnect/v4/models"
 )
 
 type quoteParams struct {

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/zerodha/gokiteconnect/v4/models"
+	"gokiteconnect-master/models"
 )
 
 // UserSession represents the response after a successful authentication.

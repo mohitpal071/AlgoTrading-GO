@@ -12,9 +12,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gokiteconnect-master/models"
+
+	kiteconnect "gokiteconnect-master"
+
 	"github.com/gorilla/websocket"
-	kiteconnect "github.com/zerodha/gokiteconnect/v4"
-	"github.com/zerodha/gokiteconnect/v4/models"
 )
 
 // Mode represents available ticker modes.
@@ -47,12 +49,12 @@ type Ticker struct {
 type atomicTime struct {
 	v atomic.Value
 }
-	
+
 // Get returns the current timestamp.
 func (b *atomicTime) Get() time.Time {
 	return b.v.Load().(time.Time)
 }
-	 
+
 // Set sets the current timestamp.
 func (b *atomicTime) Set(value time.Time) {
 	b.v.Store(value)
@@ -356,7 +358,6 @@ func (t *Ticker) handleClose(code int, reason string) error {
 	return nil
 }
 
-
 // Trigger callback methods
 func (t *Ticker) triggerError(err error) {
 	if t.callbacks.onError != nil {
@@ -387,7 +388,6 @@ func (t *Ticker) triggerNoReconnect(attempt int) {
 		t.callbacks.onNoReconnect(attempt)
 	}
 }
-
 
 func (t *Ticker) triggerMessage(messageType int, message []byte) {
 	if t.callbacks.onMessage != nil {
@@ -776,4 +776,3 @@ func convertPrice(seg uint32, val float64) float64 {
 		return val / 100.0
 	}
 }
-
