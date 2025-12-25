@@ -58,30 +58,31 @@ type Orders []Order
 
 // OrderParams represents parameters for placing an order.
 type OrderParams struct {
-	Exchange        string `url:"exchange,omitempty"`
-	Tradingsymbol   string `url:"tradingsymbol,omitempty"`
-	Validity        string `url:"validity,omitempty"`
-	ValidityTTL     int    `url:"validity_ttl,omitempty"`
-	Product         string `url:"product,omitempty"`
-	OrderType       string `url:"order_type,omitempty"`
-	TransactionType string `url:"transaction_type,omitempty"`
+	Exchange        string  `json:"exchange" form:"exchange" url:"exchange,omitempty"`
+	Tradingsymbol   string  `json:"tradingsymbol" form:"tradingsymbol" url:"tradingsymbol,omitempty"`
+	Validity        string  `json:"validity" form:"validity" url:"validity,omitempty"`
+	ValidityTTL     int     `json:"validity_ttl" form:"validity_ttl" url:"validity_ttl,omitempty"`
+	Product         string  `json:"product" form:"product" url:"product,omitempty"`
+	OrderType       string  `json:"order_type" form:"order_type" url:"order_type,omitempty"`
+	TransactionType string  `json:"transaction_type" form:"transaction_type" url:"transaction_type,omitempty"`
 
-	Quantity          int     `url:"quantity,omitempty"`
-	DisclosedQuantity int     `url:"disclosed_quantity,omitempty"`
-	Price             float64 `url:"price,omitempty"`
-	TriggerPrice      float64 `url:"trigger_price,omitempty"`
+	Quantity          int     `json:"quantity" form:"quantity" url:"quantity,omitempty"`
+	DisclosedQuantity int     `json:"disclosed_quantity" form:"disclosed_quantity" url:"disclosed_quantity,omitempty"`
+	Price             float64 `json:"price" form:"price" url:"price,omitempty"`
+	TriggerPrice      float64 `json:"trigger_price" form:"trigger_price" url:"trigger_price,omitempty"`
 
-	Squareoff        float64 `url:"squareoff,omitempty"`
-	Stoploss         float64 `url:"stoploss,omitempty"`
-	TrailingStoploss float64 `url:"trailing_stoploss,omitempty"`
+	Squareoff        float64 `json:"squareoff" form:"squareoff" url:"squareoff,omitempty"`
+	Stoploss         float64 `json:"stoploss" form:"stoploss" url:"stoploss,omitempty"`
+	TrailingStoploss float64 `json:"trailing_stoploss" form:"trailing_stoploss" url:"trailing_stoploss,omitempty"`
 
-	IcebergLegs int `url:"iceberg_legs,omitempty"`
-	IcebergQty  int `url:"iceberg_quantity,omitempty"`
+	IcebergLegs int `json:"iceberg_legs" form:"iceberg_legs" url:"iceberg_legs,omitempty"`
+	IcebergQty  int `json:"iceberg_quantity" form:"iceberg_quantity" url:"iceberg_quantity,omitempty"`
 
-	AuctionNumber string `url:"auction_number,omitempty"`
+	AuctionNumber string `json:"auction_number" form:"auction_number" url:"auction_number,omitempty"`
 
-	Tag string `json:"tag" url:"tag,omitempty"`
+	Tag string `json:"tag" form:"tag" url:"tag,omitempty"`
 }
+
 
 // OrderResponse represents the order place success response.
 type OrderResponse struct {
@@ -146,7 +147,7 @@ func (c *Client) PlaceOrder(variety string, orderParams OrderParams) (OrderRespo
 	if params, err = query.Values(orderParams); err != nil {
 		return orderResponse, NewError(InputError, fmt.Sprintf("Error decoding order params: %v", err), nil)
 	}
-
+	
 	err = c.doEnvelope(http.MethodPost, fmt.Sprintf(URIPlaceOrder, variety), params, nil, &orderResponse)
 	return orderResponse, err
 }
