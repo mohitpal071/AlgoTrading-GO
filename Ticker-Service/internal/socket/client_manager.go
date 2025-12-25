@@ -48,12 +48,12 @@ func (m *ClientManager) Start() {
 
 		case client := <-m.register:
 			m.clientList[client] = true
-			log.Printf("New client connected. Total clients: %d", len(m.clientList))
+			log.Printf("New client connected from %s. Total clients: %d", client.conn.RemoteAddr(), len(m.clientList))
 
 		case client := <-m.unregister:
 			if _, ok := m.clientList[client]; ok {
 				delete(m.clientList, client)
-				log.Printf("Client disconnected. Total clients: %d", len(m.clientList))
+				log.Printf("Client disconnected (%s). Total clients: %d", client.conn.RemoteAddr(), len(m.clientList))
 			}
 
 		case msg := <-m.broadcast:
