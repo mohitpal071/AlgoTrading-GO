@@ -31,15 +31,22 @@ func main() {
 
 	r := gin.Default()
 
-	r.GET("/profile", ctrl.GetProfile)
+	r.GET("/user/profile/full", ctrl.GetProfile)
 
-	r.GET("/margins", ctrl.GetMargins)
+	r.GET("/user/margins", ctrl.GetMargins)
 
-	r.GET("/holdings", ctrl.GetHoldings)
+	r.GET("/portfolio/holdings", ctrl.GetHoldings)
 
-	r.GET("/positions", ctrl.GetPositions)
+	r.GET("/portfolio/positions", ctrl.GetPositions)
 
 	r.GET("/orders", ctrl.GetOrders)
+	r.GET("/trades", ctrl.GetTrades)
+	r.GET("/orders/:order_id", ctrl.GetOrderHistory)
+	r.GET("/orders/:order_id/trades", ctrl.GetOrderTrades)
+
+	r.POST("/orders/:variety", ctrl.PlaceOrder)
+	r.PUT("/orders/:variety/:order_id", ctrl.ModifyOrder)
+	r.DELETE("/orders/:variety/:order_id", ctrl.CancelOrder)
 
 	port := "8080"
 	fmt.Printf("Starting server on port %s...\n", port)
