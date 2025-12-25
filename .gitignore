@@ -1,3 +1,4 @@
-.chglog
-.env
-.vscode
+*.chglog
+*.env
+*.vscode
+*.md

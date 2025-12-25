@@ -258,11 +258,18 @@ func (c *Client) do(method, uri string, params url.Values, headers http.Header) 
 	headers.Add("X-Kite-Version", kiteHeaderVersion)
 	headers.Add("User-Agent", name+"/"+version)
 
-	if c.apiKey != "" && c.accessToken != "" {
+	if c.encToken != "" {
+		authHeader := fmt.Sprintf("enctoken %s", c.encToken)
+		headers.Add("Authorization", authHeader)
+	} else if c.apiKey != "" && c.accessToken != "" {
 		authHeader := fmt.Sprintf("token %s:%s", c.apiKey, c.accessToken)
 		headers.Add("Authorization", authHeader)
 	}
 
+	fmt.Printf("%s%s\n", c.baseURI, uri)
+	if uri == URIGetInstruments {
+		return c.httpClient.Do(method, "https://api.kite.trade/instruments", nil, headers)
+	}
 	return c.httpClient.Do(method, c.baseURI+uri, params, headers)
 }
 

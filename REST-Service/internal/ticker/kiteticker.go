@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"gokiteconnect-master/models"
 
+	"github.com/gorilla/websocket"
 	// "github.com/zerodha/gokiteconnect/v4/models"
 )
 
@@ -51,14 +51,12 @@ func (t *ExtendedTicker) Serve() {
 	t.ServeWithContext(context.Background())
 }
 
-
 // ServeWithContext starts the connection to ticker server and additionally
 // accepts a context. Since its blocking its recommended to use it in a go
 // routine.
 func (t *ExtendedTicker) ServeWithContext(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	t.cancel = cancel
-
 
 	for {
 		select {
@@ -87,7 +85,7 @@ func (t *ExtendedTicker) ServeWithContext(ctx context.Context) {
 					t.Conn.Close()
 				}
 			}
- 
+
 			// Prepare ticker URL with required params.
 			q := t.url.Query()
 			t.url.RawQuery = q.Encode()
@@ -95,7 +93,6 @@ func (t *ExtendedTicker) ServeWithContext(ctx context.Context) {
 			// create a dialer
 			d := websocket.DefaultDialer
 			d.HandshakeTimeout = t.connectTimeout
-			fmt.Println(os.Getenv("ENCTOKEN"))
 
 			// var ws_url = "wss://ws.zerodha.com/?api_key=kitefront&user_id=VM2107&enctoken="+ os.Getenv("ENC_TOKEN")+ "%3D%3D&uid=1745504664336&user-agent=kite3-web&version=3.0.0"
 			url, _ := url.Parse("wss://ws.zerodha.com/")
@@ -109,7 +106,6 @@ func (t *ExtendedTicker) ServeWithContext(ctx context.Context) {
 			url.RawQuery = query.Encode()
 			ws_url := url.String()
 
-			fmt.Println("ws_url: ", ws_url)
 			conn, _, err := d.Dial(ws_url, nil)
 			if err != nil {
 				t.triggerError(err)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -17,6 +18,8 @@ import (
 
 	kiteconnect "gokiteconnect-master"
 	"gokiteconnect-master/models"
+
+	"rest-service/internal/options"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -86,6 +89,25 @@ func main() {
 
 	// Initialize Kite Connect client
 	kc := kiteconnect.NewWithEncToken(encToken)
+
+	scanner := options.NewScanner(kc)
+	if err := scanner.ScanInstruments(); err != nil {
+		log.Fatalf("Failed to scan options: %v", err)
+	}
+
+	// See what you found
+	underlyings := scanner.GetUnderlyings()
+	log.Printf("Found %d underlyings:", len(underlyings))
+
+	for _, underlying := range underlyings {
+		fmt.Println(underlying)
+	}
+
+	// Get NIFTY expiries
+	// expiries := scanner.GetExpiries("NIFTY")
+	// for _, expiry := range expiries {
+	// 	log.Printf("NIFTY expiry: %s", expiry.Format("2006-01-02"))
+	// }
 
 	// Initialize Handler Controller
 	ctrl := handlers.NewController(kc)
