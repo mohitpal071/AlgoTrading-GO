@@ -30,6 +30,7 @@ const (
 	requestTimeout time.Duration = 7000 * time.Millisecond
 	baseURI        string        = "https://api.kite.trade"
 	kiteBaseURI    string        = "https://kite.zerodha.com"
+	kiteBaseURIOMS string        = "https://kite.zerodha.com/oms"
 	// Kite connect header version
 	kiteHeaderVersion string = "3"
 )
@@ -96,11 +97,11 @@ const (
 	URIUserSessionInvalidate string = "/session/token"
 	URIUserSessionRenew      string = "/session/refresh_token"
 	URIUserProfile           string = "/user/profile"
-	URIFullUserProfile       string = "/oms/user/profile/full"
-	URIUserMargins           string = "/oms/user/margins"
+	URIFullUserProfile       string = "/user/profile/full"
+	URIUserMargins           string = "/user/margins"
 	URIUserMarginsSegment    string = "/user/margins/%s" // "/user/margins/{segment}"
 
-	URIGetOrders       string = "/oms/orders"
+	URIGetOrders       string = "/orders"
 	URIGetTrades       string = "/trades"
 	URIGetOrderHistory string = "/orders/%s"        // "/orders/{order_id}"
 	URIGetOrderTrades  string = "/orders/%s/trades" // "/orders/{order_id}/trades"
@@ -108,8 +109,8 @@ const (
 	URIModifyOrder     string = "/orders/%s/%s"     // "/orders/{variety}/{order_id}"
 	URICancelOrder     string = "/orders/%s/%s"     // "/orders/{variety}/{order_id}"
 
-	URIGetPositions       string = "/oms/portfolio/positions"
-	URIGetHoldings        string = "/oms/portfolio/holdings"
+	URIGetPositions       string = "/portfolio/positions"
+	URIGetHoldings        string = "/portfolio/holdings"
 	URIInitHoldingsAuth   string = "/portfolio/holdings/authorise"
 	URIAuctionInstruments string = "/portfolio/holdings/auctions"
 	URIConvertPosition    string = "/portfolio/positions"
@@ -169,7 +170,7 @@ func New(apiKey string) *Client {
 func NewWithEncToken(encToken string) *Client {
 	client := &Client{
 		encToken: encToken,
-		baseURI:  kiteBaseURI,
+		baseURI:  kiteBaseURIOMS,
 	}
 
 	// Create a default http handler with default timeout.
@@ -241,7 +242,7 @@ func (c *Client) doEnvelope(method, uri string, params url.Values, headers http.
 		headers.Add("Authorization", authHeader)
 	}
 
-	fmt.Printf("%s%s", c.baseURI, uri)
+	fmt.Printf("%s%s\n", c.baseURI, uri)
 	return c.httpClient.DoEnvelope(method, c.baseURI+uri, params, headers, v)
 }
 
