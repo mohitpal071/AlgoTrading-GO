@@ -70,11 +70,13 @@ func main() {
 
 	ticker.OnBinaryTick(func(tick []byte) {
 		// Broadcast raw bytes to connected WS clients
+		// fmt.Println(tick)
 		manager.Broadcast(tick)
 	})
 
 	ticker.OnTick(func(tick models.Tick) {
 		// Update in-memory store
+		// fmt.Println(tick)
 		store.GlobalStore.UpdateFromTick(tick)
 	})
 
@@ -89,6 +91,7 @@ func main() {
 	// Initialize Kite Connect client
 	kc := kiteconnect.NewWithEncToken(encToken)
 
+	//----------------------------------------------------OPTION SCANNER----------------------------------------------------
 	scanner := options.NewScanner(kc)
 	if err := scanner.ScanInstruments(); err != nil {
 		log.Fatalf("Failed to scan options: %v", err)
@@ -107,6 +110,50 @@ func main() {
 	// for _, expiry := range expiries {
 	// 	log.Printf("NIFTY expiry: %s", expiry.Format("2006-01-02"))
 	// }
+
+	// Filter for NIFTY weekly puts
+	putType := options.Put
+	// expiry := time.Date(2025, 12, 30, 0, 0, 0, 0, time.UTC)
+	minStrike := float64(24000)
+	maxStrike := float64(26500)
+	criteria := options.FilterCriteria{
+		Underlying: "NIFTY",
+		OptionType: &putType,
+		// Expiry:          &expiry,
+		MinStrike:       &minStrike,
+		MaxStrike:       &maxStrike,
+		MinDaysToExpiry: 7,
+		MaxDaysToExpiry: 14,
+	}
+
+	tokens := scanner.FilterOptions(criteria)
+	log.Printf("Found %d matching options", len(tokens))
+
+	// Subscribe in batches
+	batchSize := 100
+	for i := 0; i < len(tokens); i += batchSize {
+		end := i + batchSize
+		if end > len(tokens) {
+			end = len(tokens)
+		}
+		batch := tokens[i:end]
+
+
+		if err := ticker.Subscribe(batch); err == nil {
+			err = ticker.SetFullMode(batch)
+			if err != nil {
+				log.Println("err: ", err)
+			} else {
+				log.Println("Subscribed : ", batch)
+			}
+		} else {
+			log.Println("Err : ", err)
+		}
+
+		// break
+	}
+
+	//----------------------------------------------------OPTION SCANNER----------------------------------------------------
 
 	// Initialize Handler Controller
 	ctrl := handlers.NewController(kc)

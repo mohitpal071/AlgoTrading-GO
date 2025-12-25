@@ -316,15 +316,19 @@ func (s *Scanner) FilterOptions(criteria FilterCriteria) []uint32 {
 	tokens := make([]uint32, 0)
 	now := time.Now()
 
+	fmt.Println(criteria)
+
+	
+
 	for token, inst := range s.instruments {
 		// Filter by underlying
-		underlying := s.extractUnderlying(inst.Tradingsymbol)
+		underlying := inst.Name
 		if criteria.Underlying != "" && underlying != criteria.Underlying {
 			continue
 		}
 
 		// Filter by expiry
-		if criteria.Expiry != nil && !inst.Expiry.Equal(*criteria.Expiry) {
+		if criteria.Expiry != nil && !inst.Expiry.Equal(normalize(*criteria.Expiry)) {
 			continue
 		}
 
@@ -342,7 +346,7 @@ func (s *Scanner) FilterOptions(criteria FilterCriteria) []uint32 {
 		}
 
 		// Filter by days to expiry
-		daysToExpiry := int(inst.Expiry.Sub(now).Hours() / 24)
+		daysToExpiry := int(inst.Expiry.Sub(now).Hours() / 24)		
 		if criteria.MinDaysToExpiry > 0 && daysToExpiry < criteria.MinDaysToExpiry {
 			continue
 		}
