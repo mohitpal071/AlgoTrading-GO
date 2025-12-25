@@ -1,4 +1,3 @@
-// Package kiteticker provides kite ticker access using callbacks.
 package kiteticker
 
 import (

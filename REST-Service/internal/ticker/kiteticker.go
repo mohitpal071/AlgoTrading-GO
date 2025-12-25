@@ -189,15 +189,15 @@ func (t *ExtendedTicker) readMessage(ctx context.Context, wg *sync.WaitGroup) {
 			// If binary message then parse and send tick.
 			if mType == websocket.BinaryMessage {
 				t.triggerBinaryTick(msg)
-				// ticks, err := t.parseBinary(msg)
-				// if err != nil {
-				// 	t.triggerError(fmt.Errorf("Error parsing data received: %v", err))
-				// }
+				ticks, err := t.parseBinary(msg)
+				if err != nil {
+					t.triggerError(fmt.Errorf("Error parsing data received: %v", err))
+				}
 
-				// // Trigger individual tick.
-				// for _, tick := range ticks {
-				// 	t.triggerTick(tick)
-				// }
+				// Trigger individual tick.
+				for _, tick := range ticks {
+					t.triggerTick(tick)
+				}
 			} else if mType == websocket.TextMessage {
 				t.processTextMessage(msg)
 			}

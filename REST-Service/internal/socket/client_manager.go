@@ -7,7 +7,7 @@ import (
 
 	"net/http"
 
-	kiteticker "ticker-service/ticker"
+	kiteticker "rest-service/internal/ticker"
 
 	"github.com/gorilla/websocket"
 )
