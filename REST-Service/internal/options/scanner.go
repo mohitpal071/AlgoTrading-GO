@@ -28,6 +28,17 @@ func NewScanner(kiteClient *kiteconnect.Client) *Scanner {
 	}
 }
 
+var ist, _ = time.LoadLocation("Asia/Kolkata")
+
+func normalize(t time.Time) time.Time {
+    t = t.In(ist)
+    return time.Date(
+        t.Year(), t.Month(), t.Day(),
+        0, 0, 0, 0,
+        ist,
+    )
+}
+
 // ScanInstruments fetches all instruments and filters for options
 func (s *Scanner) ScanInstruments() error {
 	log.Println("Scanning for option instruments...")
@@ -59,12 +70,13 @@ func (s *Scanner) ScanInstruments() error {
 				Segment:         inst.Segment,
 				InstrumentType:  OptionType(inst.InstrumentType),
 				StrikePrice:     inst.StrikePrice,
-				Expiry:          inst.Expiry.Time,
+				Expiry:          normalize(inst.Expiry.Time),//2026-02-24 00:00:00 +0530 IST
 				TickSize:        inst.TickSize,
 				LotSize:         int(inst.LotSize),
 				LastPrice:       inst.LastPrice,
 			}
-
+			
+			
 			s.instruments[optInst.InstrumentToken] = optInst
 			optionCount++
 
@@ -79,7 +91,7 @@ func (s *Scanner) ScanInstruments() error {
 				s.chains[underlying] = make(map[time.Time]*OptionChain)
 			}
 
-			expiry := inst.Expiry.Time
+			expiry := normalize(inst.Expiry.Time)
 			if s.chains[underlying][expiry] == nil {
 				s.chains[underlying][expiry] = &OptionChain{
 					Underlying:  underlying,
@@ -114,7 +126,10 @@ func (s *Scanner) ScanInstruments() error {
 			}
 		}
 	}
-	log.Println(s.chains["NIFTY"][time.Date(2025, 12, 30, 0, 0, 0, 0, time.UTC)])
+	
+	var IST, _ = time.LoadLocation("Asia/Kolkata")
+	fmt.Println(s.chains["NIFTY"][normalize(time.Date(2025, 12, 30, 0, 0, 0, 0, IST))].Strikes[26000].Call.Tradingsymbol) // 2025-12-30 00:00:00 +0530 IST
+
 	log.Printf("Found %d option instruments", optionCount)
 	log.Printf("Built option chains for %d underlyings", len(s.chains))
 

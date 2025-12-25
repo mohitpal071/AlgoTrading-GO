@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -99,9 +98,9 @@ func main() {
 	underlyings := scanner.GetUnderlyings()
 	log.Printf("Found %d underlyings:", len(underlyings))
 
-	for _, underlying := range underlyings {
-		fmt.Println(underlying)
-	}
+	// for _, underlying := range underlyings {
+	// 	fmt.Println(underlying)
+	// }
 
 	// Get NIFTY expiries
 	// expiries := scanner.GetExpiries("NIFTY")
