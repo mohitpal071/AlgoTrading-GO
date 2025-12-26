@@ -1,16 +1,27 @@
 {
-  "filter_criteria": {
-    "underlying": "NIFTY",
-    "option_type": null,
-    "expiry": null,
-    "min_strike": 25800,
-    "max_strike": 26500,
-    "min_days_to_expiry": 7,
-    "max_days_to_expiry": 14
-  },
+  "underlyings": [
+    {
+      "underlying": "DIXON",
+      "option_type": null,
+      "expiry": null,
+      "min_strike": 12450,
+      "max_strike": 13000,
+      "min_days_to_expiry": 0,
+      "max_days_to_expiry": 14
+    },
+    {
+      "underlying": "NIFTY",
+      "option_type": null,
+      "expiry": null,
+      "min_strike": 25800,
+      "max_strike": 26500,
+      "min_days_to_expiry": 7,
+      "max_days_to_expiry": 14
+    }
+  ],
   "subscription": {
     "batch_size": 100,
-    "batch_delay_ms": 100
+    "batch_delay_ms": 10
   }
 }
 

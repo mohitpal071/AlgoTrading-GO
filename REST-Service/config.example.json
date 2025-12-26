@@ -1,13 +1,24 @@
 {
-  "filter_criteria": {
-    "underlying": "NIFTY",
-    "option_type": "PE",
-    "expiry": "2025-12-30",
-    "min_strike": 25800,
-    "max_strike": 26500,
-    "min_days_to_expiry": 7,
-    "max_days_to_expiry": 14
-  },
+  "underlyings": [
+    {
+      "underlying": "NIFTY",
+      "option_type": "PE",
+      "expiry": null,
+      "min_strike": 25800,
+      "max_strike": 26500,
+      "min_days_to_expiry": 7,
+      "max_days_to_expiry": 14
+    },
+    {
+      "underlying": "BANKNIFTY",
+      "option_type": "CE",
+      "expiry": "2025-12-30",
+      "min_strike": 50000,
+      "max_strike": 52000,
+      "min_days_to_expiry": 0,
+      "max_days_to_expiry": 30
+    }
+  ],
   "subscription": {
     "batch_size": 100,
     "batch_delay_ms": 100

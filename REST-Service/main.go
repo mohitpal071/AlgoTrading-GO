@@ -192,21 +192,33 @@ func OptionScanner(scanner *options.Scanner) {
 }
 
 func FilterCriteriaAndSubscribeTokens(scanner *options.Scanner, ticker *kiteticker.ExtendedTicker, cfg *config.Config) {
-	// Convert config to filter criteria
-	criteria, err := cfg.FilterCriteria.ToFilterCriteria()
+	// Get filter criteria for all underlyings
+	allCriteria, err := cfg.GetAllFilterCriteria()
 	if err != nil {
 		log.Fatalf("Invalid filter criteria: %v", err)
 	}
 
-	tokensMap := scanner.FilterOptions(criteria)
-	log.Printf("Found %d matching options", len(tokensMap))
+	// Collect all tokens from all underlyings
+	allTokensMap := make(map[uint32]*options.OptionInstrument)
+
+	for _, criteria := range allCriteria {
+		tokensMap := scanner.FilterOptions(criteria)
+		log.Printf("Found %d matching options for %s", len(tokensMap), criteria.Underlying)
+
+		// Merge tokens into the main map
+		for token, inst := range tokensMap {
+			allTokensMap[token] = inst
+		}
+	}
+
+	log.Printf("Total unique options found across all underlyings: %d", len(allTokensMap))
 
 	// Subscribe in batches using config settings
 	batchSize := cfg.Subscription.BatchSize
 	batchDelay := time.Duration(cfg.Subscription.BatchDelayMs) * time.Millisecond
 
-	keys := make([]uint32, 0, len(tokensMap))
-	for key := range tokensMap {
+	keys := make([]uint32, 0, len(allTokensMap))
+	for key := range allTokensMap {
 		keys = append(keys, key)
 	}
 
@@ -225,7 +237,7 @@ func FilterCriteriaAndSubscribeTokens(scanner *options.Scanner, ticker *kitetick
 			} else {
 				log.Printf("Successfully subscribed batch %d-%d (%d tokens)", i, end, len(batch))
 				for _, key := range batch {
-					fmt.Println(tokensMap[key])
+					fmt.Println(allTokensMap[key])
 				}
 			}
 		} else {
