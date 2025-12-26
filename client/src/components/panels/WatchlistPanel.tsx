@@ -1,12 +1,16 @@
 import { useWatchlistStore } from '../../store/watchlistStore';
 import { formatPrice, formatNumber, formatPercentage, getPriceChangeClass } from '../../utils/formatters';
+import WatchlistGroupSelector from './WatchlistGroupSelector';
 
 export default function WatchlistPanel() {
-  const { getWatchlist, toggleFavorite } = useWatchlistStore();
-  const watchlist = getWatchlist();
+  const { getWatchlist, toggleFavorite, selectedGroupId } = useWatchlistStore();
+  const watchlist = getWatchlist(selectedGroupId);
 
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-auto flex flex-col">
+      {/* Group Selector */}
+      <WatchlistGroupSelector />
+      
       {/* Header Row */}
       <div className="sticky top-0 bg-terminal-border z-10 px-2 py-1 border-b border-terminal-border">
         <div className="grid grid-cols-12 gap-1 text-[10px] font-semibold text-terminal-accent">

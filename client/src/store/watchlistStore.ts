@@ -1,17 +1,36 @@
 import { create } from 'zustand';
 import { Instrument, WatchlistItem } from '../types/instrument';
 
+export interface WatchlistGroup {
+  id: string;
+  name: string;
+  symbols: string[];
+  color?: string;
+}
+
 interface WatchlistStore {
   instruments: Map<string, Instrument>;
   favorites: Set<string>;
+  groups: Map<string, WatchlistGroup>;
+  selectedGroupId: string | null;
   
   // Actions
   addInstrument: (instrument: Instrument) => void;
   updateInstrument: (symbol: string, updates: Partial<Instrument>) => void;
   removeInstrument: (symbol: string) => void;
   toggleFavorite: (symbol: string) => void;
-  getWatchlist: () => WatchlistItem[];
+  getWatchlist: (groupId?: string | null) => WatchlistItem[];
   getInstrument: (symbol: string) => Instrument | undefined;
+  
+  // Group actions
+  createGroup: (name: string, symbols?: string[]) => string;
+  updateGroup: (groupId: string, updates: Partial<WatchlistGroup>) => void;
+  deleteGroup: (groupId: string) => void;
+  addSymbolToGroup: (groupId: string, symbol: string) => void;
+  removeSymbolFromGroup: (groupId: string, symbol: string) => void;
+  selectGroup: (groupId: string | null) => void;
+  getGroups: () => WatchlistGroup[];
+  getSelectedGroup: () => WatchlistGroup | null;
 }
 
 // Generate dummy data
@@ -80,6 +99,45 @@ function generateDummyInstruments(): Instrument[] {
   });
 }
 
+// Generate default groups
+function generateDefaultGroups(instruments: Instrument[]): Map<string, WatchlistGroup> {
+  const groups = new Map<string, WatchlistGroup>();
+  
+  // Indices group
+  groups.set('indices', {
+    id: 'indices',
+    name: 'Indices',
+    symbols: ['NIFTY', 'BANKNIFTY', 'FINNIFTY'],
+    color: '#58a6ff',
+  });
+  
+  // Banking group
+  groups.set('banking', {
+    id: 'banking',
+    name: 'Banking',
+    symbols: ['HDFCBANK', 'ICICIBANK', 'SBIN'],
+    color: '#3fb950',
+  });
+  
+  // IT group
+  groups.set('it', {
+    id: 'it',
+    name: 'IT',
+    symbols: ['TCS', 'INFY', 'WIPRO'],
+    color: '#d29922',
+  });
+  
+  // Others group
+  groups.set('others', {
+    id: 'others',
+    name: 'Others',
+    symbols: ['RELIANCE', 'BHARTIARTL', 'DIXON'],
+    color: '#f85149',
+  });
+  
+  return groups;
+}
+
 export const useWatchlistStore = create<WatchlistStore>((set, get) => {
   // Initialize with dummy data
   const dummyInstruments = generateDummyInstruments();
@@ -88,9 +146,13 @@ export const useWatchlistStore = create<WatchlistStore>((set, get) => {
     instrumentsMap.set(inst.symbol, inst);
   });
 
+  const defaultGroups = generateDefaultGroups(dummyInstruments);
+
   return {
     instruments: instrumentsMap,
     favorites: new Set(['NIFTY', 'BANKNIFTY', 'RELIANCE']),
+    groups: defaultGroups,
+    selectedGroupId: 'indices', // Default to indices group
 
     addInstrument: (instrument: Instrument) => {
       const { instruments } = get();
@@ -136,12 +198,28 @@ export const useWatchlistStore = create<WatchlistStore>((set, get) => {
       set({ favorites: newFavorites });
     },
 
-    getWatchlist: () => {
-      const { instruments, favorites } = get();
+    getWatchlist: (groupId?: string | null) => {
+      const { instruments, favorites, groups, selectedGroupId } = get();
+      const targetGroupId = groupId !== undefined ? groupId : selectedGroupId;
       const items: WatchlistItem[] = [];
       
+      let symbolsToShow: string[];
+      
+      if (targetGroupId) {
+        // Show only symbols from selected group
+        const group = groups.get(targetGroupId);
+        if (group) {
+          symbolsToShow = group.symbols.filter(symbol => instruments.has(symbol));
+        } else {
+          symbolsToShow = [];
+        }
+      } else {
+        // Show all symbols
+        symbolsToShow = Array.from(instruments.keys());
+      }
+      
       // Sort: favorites first, then alphabetically
-      const sortedSymbols = Array.from(instruments.keys()).sort((a, b) => {
+      const sortedSymbols = symbolsToShow.sort((a, b) => {
         const aFav = favorites.has(a);
         const bFav = favorites.has(b);
         if (aFav && !bFav) return -1;
@@ -164,6 +242,82 @@ export const useWatchlistStore = create<WatchlistStore>((set, get) => {
 
     getInstrument: (symbol: string) => {
       return get().instruments.get(symbol);
+    },
+
+    // Group actions
+    createGroup: (name: string, symbols: string[] = []) => {
+      const { groups } = get();
+      const id = `group_${Date.now()}`;
+      const newGroup: WatchlistGroup = {
+        id,
+        name,
+        symbols,
+        color: '#58a6ff',
+      };
+      const updated = new Map(groups);
+      updated.set(id, newGroup);
+      set({ groups: updated });
+      return id;
+    },
+
+    updateGroup: (groupId: string, updates: Partial<WatchlistGroup>) => {
+      const { groups } = get();
+      const group = groups.get(groupId);
+      if (group) {
+        const updated = new Map(groups);
+        updated.set(groupId, { ...group, ...updates });
+        set({ groups: updated });
+      }
+    },
+
+    deleteGroup: (groupId: string) => {
+      const { groups, selectedGroupId } = get();
+      const updated = new Map(groups);
+      updated.delete(groupId);
+      const newSelected = selectedGroupId === groupId ? null : selectedGroupId;
+      set({ 
+        groups: updated,
+        selectedGroupId: newSelected,
+      });
+    },
+
+    addSymbolToGroup: (groupId: string, symbol: string) => {
+      const { groups } = get();
+      const group = groups.get(groupId);
+      if (group && !group.symbols.includes(symbol)) {
+        const updated = new Map(groups);
+        updated.set(groupId, {
+          ...group,
+          symbols: [...group.symbols, symbol],
+        });
+        set({ groups: updated });
+      }
+    },
+
+    removeSymbolFromGroup: (groupId: string, symbol: string) => {
+      const { groups } = get();
+      const group = groups.get(groupId);
+      if (group) {
+        const updated = new Map(groups);
+        updated.set(groupId, {
+          ...group,
+          symbols: group.symbols.filter(s => s !== symbol),
+        });
+        set({ groups: updated });
+      }
+    },
+
+    selectGroup: (groupId: string | null) => {
+      set({ selectedGroupId: groupId });
+    },
+
+    getGroups: () => {
+      return Array.from(get().groups.values());
+    },
+
+    getSelectedGroup: () => {
+      const { groups, selectedGroupId } = get();
+      return selectedGroupId ? groups.get(selectedGroupId) || null : null;
     },
   };
 });
