@@ -103,5 +103,121 @@
     --ag-foreground-color: #c9d1d9;
     --ag-background-color: #0d1117;
   }
+
+  /* React Grid Layout styling */
+  .react-grid-layout {
+    position: relative;
+  }
+
+  .react-grid-item {
+    transition: all 200ms ease;
+    transition-property: left, top, width, height;
+  }
+
+  .react-grid-item.cssTransforms {
+    transition-property: transform, width, height;
+  }
+
+  .react-grid-item.resizing {
+    transition: none;
+    z-index: 1;
+    will-change: width, height;
+  }
+
+  .react-grid-item.react-draggable-dragging {
+    transition: none;
+    z-index: 3;
+    will-change: transform;
+  }
+
+  .react-grid-item.dropping {
+    visibility: hidden;
+  }
+
+  .react-grid-item.react-grid-placeholder {
+    background: rgba(88, 166, 255, 0.2);
+    opacity: 0.2;
+    transition-duration: 100ms;
+    z-index: 2;
+    border: 2px dashed #58a6ff;
+    border-radius: 2px;
+  }
+
+  .react-resizable-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+  }
+
+  .react-resizable-handle-se {
+    bottom: 0;
+    right: 0;
+    cursor: se-resize;
+  }
+
+  .react-resizable-handle-sw {
+    bottom: 0;
+    left: 0;
+    cursor: sw-resize;
+  }
+
+  .react-resizable-handle-ne {
+    top: 0;
+    right: 0;
+    cursor: ne-resize;
+  }
+
+  .react-resizable-handle-nw {
+    top: 0;
+    left: 0;
+    cursor: nw-resize;
+  }
+
+  .react-resizable-handle-s {
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    cursor: s-resize;
+  }
+
+  .react-resizable-handle-n {
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    cursor: n-resize;
+  }
+
+  .react-resizable-handle-e {
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: e-resize;
+  }
+
+  .react-resizable-handle-w {
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: w-resize;
+  }
+
+  .react-resizable-handle::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: #58a6ff;
+    border: 1px solid #0d1117;
+    border-radius: 1px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .react-resizable-handle:hover::after {
+    opacity: 1;
+  }
 }
 
