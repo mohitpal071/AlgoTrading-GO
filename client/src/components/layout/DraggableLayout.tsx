@@ -2,7 +2,6 @@ import { useMemo, useState, useEffect } from 'react';
 import GridLayout, { Layout } from 'react-grid-layout';
 import { useLayoutStore, PanelId } from '../../store/layoutStore';
 import WatchlistPanel from '../panels/WatchlistPanel';
-import GreeksPanel from '../panels/GreeksPanel';
 import OptionChainTable from '../tables/OptionChainTable';
 import PositionsPanel from '../panels/PositionsPanel';
 import OrdersPanel from '../panels/OrdersPanel';
@@ -34,12 +33,10 @@ function PanelContent({
   switch (panelId) {
     case 'watchlist':
       return <WatchlistPanel />;
-    case 'greeks':
-      return <GreeksPanel selectedToken={selectedToken} />;
     case 'optionChain':
       return (
         <div className="h-full flex flex-col">
-          <div className="flex items-center justify-between px-2 mb-1">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-terminal-border/50 bg-terminal-border/30">
             {selectedUnderlying && (
               <div className="flex items-center gap-3 text-xs">
                 <span className="font-bold text-terminal-accent">{selectedUnderlying}</span>
@@ -57,7 +54,7 @@ function PanelContent({
               <select
                 value={selectedExpiry || ''}
                 onChange={(e) => onExpiryChange(e.target.value)}
-                className="bg-terminal-bg border border-terminal-border px-2 py-0.5 text-xs text-terminal-text h-5"
+                className="bg-terminal-bg border border-terminal-border px-2 py-0.5 text-xs text-terminal-text h-6 rounded hover:border-terminal-accent transition-colors"
               >
                 {expiries.map((expiry) => (
                   <option key={expiry} value={expiry}>
@@ -95,27 +92,48 @@ interface PanelWrapperProps {
   panelId: PanelId;
   title: string;
   children: React.ReactNode;
+  isMaximized: boolean;
   onMinimize: () => void;
+  onMaximize: () => void;
   onClose: () => void;
 }
 
-function PanelWrapper({ panelId, title, children, onMinimize, onClose }: PanelWrapperProps) {
+function PanelWrapper({ panelId, title, children, isMaximized, onMinimize, onMaximize, onClose }: PanelWrapperProps) {
   return (
-    <div className="panel h-full w-full flex flex-col overflow-hidden">
-      <div className="panel-header flex items-center justify-between px-2">
+    <div className="panel h-full w-full flex flex-col overflow-hidden relative group">
+      <div className="panel-header flex items-center justify-between px-2 cursor-move select-none">
         <span className="text-xs font-bold text-terminal-accent tracking-wider">{title}</span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
-            onClick={onMinimize}
-            className="w-4 h-4 flex items-center justify-center text-terminal-text hover:text-terminal-accent transition-colors text-[10px]"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMaximize();
+            }}
+            className="w-5 h-5 flex items-center justify-center text-terminal-text hover:bg-terminal-accent hover:text-terminal-bg rounded transition-colors text-xs font-bold"
+            title={isMaximized ? "Restore" : "Maximize"}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {isMaximized ? '⤓' : '⤢'}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onMinimize();
+            }}
+            className="w-5 h-5 flex items-center justify-center text-terminal-text hover:bg-terminal-border rounded transition-colors text-xs font-bold"
             title="Minimize"
+            onMouseDown={(e) => e.stopPropagation()}
           >
             −
           </button>
           <button
-            onClick={onClose}
-            className="w-4 h-4 flex items-center justify-center text-terminal-text hover:text-terminal-red transition-colors text-[10px]"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="w-5 h-5 flex items-center justify-center text-terminal-text hover:bg-terminal-red hover:text-white rounded transition-colors text-xs font-bold"
             title="Close"
+            onMouseDown={(e) => e.stopPropagation()}
           >
             ×
           </button>
@@ -130,9 +148,12 @@ export default function DraggableLayout() {
   const {
     panels,
     layouts,
+    maximizedPanel,
     togglePanel,
     minimizePanel,
+    maximizePanel,
     updateLayout,
+    setAvailableHeight,
   } = useLayoutStore();
 
   const { chains, getChain } = useOptionStore();
@@ -146,10 +167,15 @@ export default function DraggableLayout() {
   useEffect(() => {
     const handleResize = () => {
       setWindowWidth(window.innerWidth);
+      const availableHeight = maximizedPanel 
+        ? window.innerHeight - 40 - 40 // Header + StatusBar + MaximizeControls
+        : window.innerHeight - 40 - 80; // Header + StatusBar + RestoreBar
+      setAvailableHeight(availableHeight);
     };
+    handleResize(); // Initial calculation
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [maximizedPanel, setAvailableHeight]);
 
   useEffect(() => {
     if (underlyings.length > 0 && !selectedUnderlying) {
@@ -172,38 +198,54 @@ export default function DraggableLayout() {
     : [];
 
   const visiblePanels = useMemo(() => {
+    if (maximizedPanel) {
+      // When maximized, only show the maximized panel
+      return Array.from(panels.values()).filter(p => p.id === maximizedPanel && p.visible);
+    }
+    // Normal mode: show all visible, non-minimized panels
     return Array.from(panels.values()).filter(p => p.visible && !p.minimized);
-  }, [panels]);
+  }, [panels, maximizedPanel]);
+
+  const isMaximized = (panelId: PanelId) => maximizedPanel === panelId;
 
   const handleLayoutChange = (layout: Layout[]) => {
     updateLayout(layout);
   };
 
+  // Calculate available height for grid
+  const availableHeight = maximizedPanel 
+    ? window.innerHeight - 40 - 32 // Header + StatusBar + MaximizeControls
+    : window.innerHeight - 40 - 80; // Header + StatusBar + RestoreBar
+
   return (
-    <div className="h-full w-full relative" style={{ paddingBottom: '80px' }}>
+    <div className="h-full w-full relative" style={{ paddingBottom: maximizedPanel ? '40px' : '80px' }}>
       <GridLayout
         className="layout"
         layout={layouts.lg}
         cols={12}
-        rowHeight={30}
+        rowHeight={Math.floor(availableHeight / 20)}
         width={windowWidth}
+        height={availableHeight}
         onLayoutChange={handleLayoutChange}
-        isDraggable={true}
-        isResizable={true}
+        isDraggable={false}
+        isResizable={false}
         draggableHandle=".panel-header"
         resizeHandles={['se', 'sw', 'ne', 'nw', 's', 'n', 'e', 'w']}
-        margin={[4, 4]}
-        containerPadding={[4, 4]}
+        margin={maximizedPanel ? [0, 0] : [6, 6]}
+        containerPadding={maximizedPanel ? [0, 0] : [6, 6]}
         compactType={null}
         preventCollision={true}
         useCSSTransforms={true}
+        isBounded={false}
       >
         {visiblePanels.map((panel) => (
           <div key={panel.id}>
             <PanelWrapper
               panelId={panel.id}
               title={panel.title}
+              isMaximized={isMaximized(panel.id)}
               onMinimize={() => minimizePanel(panel.id)}
+              onMaximize={() => maximizePanel(panel.id)}
               onClose={() => togglePanel(panel.id)}
             >
               <PanelContent
