@@ -128,6 +128,7 @@ func (s *Scanner) ScanInstruments() error {
 	}
 	
 	var IST, _ = time.LoadLocation("Asia/Kolkata")
+	fmt.Println(normalize(time.Date(2025, 12, 30, 0, 0, 0, 0, IST)))
 	fmt.Println(s.chains["NIFTY"][normalize(time.Date(2025, 12, 30, 0, 0, 0, 0, IST))].Strikes[26000].Call.Tradingsymbol) // 2025-12-30 00:00:00 +0530 IST
 
 	log.Printf("Found %d option instruments", optionCount)
@@ -205,7 +206,7 @@ func (s *Scanner) GetOptionChain(underlying string, expiry time.Time) (*OptionCh
 		return nil, false
 	}
 
-	chain, ok := s.chains[underlying][expiry]
+	chain, ok := s.chains[underlying][normalize(expiry)]
 	return chain, ok
 }
 
@@ -309,11 +310,11 @@ type FilterCriteria struct {
 }
 
 // FilterOptions returns tokens matching the filter criteria
-func (s *Scanner) FilterOptions(criteria FilterCriteria) []uint32 {
+func (s *Scanner) FilterOptions(criteria FilterCriteria) map[uint32]*OptionInstrument {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	tokens := make([]uint32, 0)
+	tokens := make(map[uint32]*OptionInstrument)
 	now := time.Now()
 
 	fmt.Println(criteria)
@@ -354,7 +355,7 @@ func (s *Scanner) FilterOptions(criteria FilterCriteria) []uint32 {
 			continue
 		}
 
-		tokens = append(tokens, token)
+		tokens[token] = inst
 	}
 
 	return tokens

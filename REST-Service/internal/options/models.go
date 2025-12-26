@@ -1,6 +1,7 @@
 package options
 
 import (
+	"fmt"
 	"time"
 
 	"gokiteconnect-master/models"
@@ -137,4 +138,6 @@ func (od *OptionData) UpdateFromTick(tick models.Tick) {
 
 	od.Volume = tick.VolumeTraded
 	od.OI = tick.OI
+
+	fmt.Println("OptionData Updated :", od.Tradingsymbol, " LastPrice: ", od.LastPrice, " BidPrice: ", od.BidPrice, " AskPrice: ", od.AskPrice, " Volume: ", od.Volume, " OI: ", od.OI)
 }

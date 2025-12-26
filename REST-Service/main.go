@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"rest-service/handlers"
+	"rest-service/internal/config"
 	"rest-service/internal/socket"
 	"rest-service/internal/store"
 	kiteticker "rest-service/internal/ticker"
@@ -43,30 +45,14 @@ func main() {
 	// --- Ticker & Store Setup ---
 
 	// Initialize ticker
+	// Initialize Kite Connect client
+	kc := kiteconnect.NewWithEncToken(encToken)
 	ticker = kiteticker.StartTicker()
+	scanner := options.NewScanner(kc)
 
 	// Initialize WebSocket Client Manager
 	manager = socket.NewClientManager(ticker)
 	go manager.Start()
-
-	// Handle incoming ticks
-	// We use OnTick for structured data (easier for Store)
-	// AND OnBinaryTick for raw broadcasting (bandwidth efficient for proxying)?
-	// Actually, gokiteconnect Ticker calls OnTick AFTER parsing OnBinaryTick.
-	// If we use OnBinaryTick, we interrupt the flow unless we call the callbacks ourselves?
-	// Let's check `ticker.go`: readMessage -> if binary -> parseBinary -> triggerTick.
-	// So OnTick is called automatically.
-
-	// BUT `kiteticker.ExtendedTicker` might have simpler OnBinaryTick we used earlier?
-	// In Ticker-Service main.go: `ticker.OnBinaryTick(...)`
-	// Let's see `kiteticker.go`: it has `OnBinaryTick`.
-
-	// STRATEGY:
-	// 1. Use OnBinaryTick to BROADCAST raw bytes to WS clients (efficient).
-	// 2. Use OnTick to UPDATE Store (parsed).
-	// Ticker implementation in `internal/ticker` supports both?
-	// Looking at previous `ticker.go`, it does `triggerMessage` (raw) AND `triggerTick` (parsed).
-	// So we can subscribe to both!
 
 	ticker.OnBinaryTick(func(tick []byte) {
 		// Broadcast raw bytes to connected WS clients
@@ -78,6 +64,7 @@ func main() {
 		// Update in-memory store
 		// fmt.Println(tick)
 		store.GlobalStore.UpdateFromTick(tick)
+		UpdateOptionData(tick, scanner)
 	})
 
 	// Start Ticker
@@ -86,74 +73,14 @@ func main() {
 		ticker.Serve()
 	}()
 
-	// --- REST API Setup ---
-
-	// Initialize Kite Connect client
-	kc := kiteconnect.NewWithEncToken(encToken)
-
-	//----------------------------------------------------OPTION SCANNER----------------------------------------------------
-	scanner := options.NewScanner(kc)
-	if err := scanner.ScanInstruments(); err != nil {
-		log.Fatalf("Failed to scan options: %v", err)
+	// Load configuration
+	cfg, err := config.LoadConfig("config.json")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// See what you found
-	underlyings := scanner.GetUnderlyings()
-	log.Printf("Found %d underlyings:", len(underlyings))
-
-	// for _, underlying := range underlyings {
-	// 	fmt.Println(underlying)
-	// }
-
-	// Get NIFTY expiries
-	// expiries := scanner.GetExpiries("NIFTY")
-	// for _, expiry := range expiries {
-	// 	log.Printf("NIFTY expiry: %s", expiry.Format("2006-01-02"))
-	// }
-
-	// Filter for NIFTY weekly puts
-	putType := options.Put
-	// expiry := time.Date(2025, 12, 30, 0, 0, 0, 0, time.UTC)
-	minStrike := float64(24000)
-	maxStrike := float64(26500)
-	criteria := options.FilterCriteria{
-		Underlying: "NIFTY",
-		OptionType: &putType,
-		// Expiry:          &expiry,
-		MinStrike:       &minStrike,
-		MaxStrike:       &maxStrike,
-		MinDaysToExpiry: 7,
-		MaxDaysToExpiry: 14,
-	}
-
-	tokens := scanner.FilterOptions(criteria)
-	log.Printf("Found %d matching options", len(tokens))
-
-	// Subscribe in batches
-	batchSize := 100
-	for i := 0; i < len(tokens); i += batchSize {
-		end := i + batchSize
-		if end > len(tokens) {
-			end = len(tokens)
-		}
-		batch := tokens[i:end]
-
-
-		if err := ticker.Subscribe(batch); err == nil {
-			err = ticker.SetFullMode(batch)
-			if err != nil {
-				log.Println("err: ", err)
-			} else {
-				log.Println("Subscribed : ", batch)
-			}
-		} else {
-			log.Println("Err : ", err)
-		}
-
-		// break
-	}
-
-	//----------------------------------------------------OPTION SCANNER----------------------------------------------------
+	OptionScanner(scanner)
+	FilterCriteriaAndSubscribeTokens(scanner, ticker, cfg)
 
 	// Initialize Handler Controller
 	ctrl := handlers.NewController(kc)
@@ -251,4 +178,94 @@ func main() {
 	}
 
 	log.Println("Server exiting")
+}
+
+func OptionScanner(scanner *options.Scanner) {
+	if err := scanner.ScanInstruments(); err != nil {
+		log.Fatalf("Failed to scan options: %v", err)
+	}
+
+	// See what you found
+	underlyings := scanner.GetUnderlyings()
+	log.Printf("Found %d underlyings:", len(underlyings))
+
+}
+
+func FilterCriteriaAndSubscribeTokens(scanner *options.Scanner, ticker *kiteticker.ExtendedTicker, cfg *config.Config) {
+	// Convert config to filter criteria
+	criteria, err := cfg.FilterCriteria.ToFilterCriteria()
+	if err != nil {
+		log.Fatalf("Invalid filter criteria: %v", err)
+	}
+
+	tokensMap := scanner.FilterOptions(criteria)
+	log.Printf("Found %d matching options", len(tokensMap))
+
+	// Subscribe in batches using config settings
+	batchSize := cfg.Subscription.BatchSize
+	batchDelay := time.Duration(cfg.Subscription.BatchDelayMs) * time.Millisecond
+
+	keys := make([]uint32, 0, len(tokensMap))
+	for key := range tokensMap {
+		keys = append(keys, key)
+	}
+
+	for i := 0; i < len(keys); i += batchSize {
+		end := i + batchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+
+		batch := keys[i:end]
+
+		if err := ticker.Subscribe(batch); err == nil {
+			err = ticker.SetFullMode(batch)
+			if err != nil {
+				log.Printf("Error setting mode for batch %d-%d: %v", i, end, err)
+			} else {
+				log.Printf("Successfully subscribed batch %d-%d (%d tokens)", i, end, len(batch))
+				for _, key := range batch {
+					fmt.Println(tokensMap[key])
+				}
+			}
+		} else {
+			log.Printf("Error subscribing batch %d-%d: %v", i, end, err)
+		}
+
+		// Add delay between batches to avoid rate limiting
+		if i+batchSize < len(keys) {
+			time.Sleep(batchDelay)
+		}
+	}
+}
+
+// Update your tick handler to process options:
+func UpdateOptionData(tick models.Tick, scanner *options.Scanner) {
+	inst, ok := scanner.GetInstrument(tick.InstrumentToken)
+	if !ok {
+		fmt.Println("Instrument not found ", tick.InstrumentToken)
+		return // Not an option
+	}
+
+	// Get chain and update
+	underlying := inst.Name
+	chain, ok := scanner.GetOptionChain(underlying, inst.Expiry)
+	if !ok {
+		fmt.Println("Chain not found ", underlying, inst.Expiry)
+		return
+	}
+
+	strikeData, ok := chain.Strikes[inst.StrikePrice]
+	if !ok {
+		return
+	}
+
+	// Update option data
+	if inst.InstrumentType == options.Call && strikeData.Call != nil {
+		strikeData.Call.UpdateFromTick(tick)
+	} else if inst.InstrumentType == options.Put && strikeData.Put != nil {
+		strikeData.Put.UpdateFromTick(tick)
+	}
+
+	// TODO: Next - Calculate Greeks
 }
