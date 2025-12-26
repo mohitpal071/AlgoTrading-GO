@@ -74,6 +74,26 @@ func (s *TickStore) Get(token uint32) (models.Tick, bool) {
 	return x.(models.Tick), true
 }
 
+
+// GetLTP returns the Last Price for a given token
+// This method is optimized to be virtually lock-free
+func (s *TickStore) GetLTP(token uint32) (float64, bool) {
+	s.mu.RLock()
+	val, ok := s.ticks[token]
+	s.mu.RUnlock()
+
+	if !ok {
+		return 0, false
+	}
+
+	// Wait-free atomic load
+	x := val.Load()
+	if x == nil {
+		return 0, false
+	}
+	return x.(models.Tick).LastPrice, true
+}
+
 // GetAll returns all stored ticks
 func (s *TickStore) GetAll() map[uint32]models.Tick {
 	s.mu.RLock()

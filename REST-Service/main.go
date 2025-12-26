@@ -27,8 +27,9 @@ import (
 )
 
 var (
-	manager *socket.ClientManager
-	ticker  *kiteticker.ExtendedTicker
+	manager    *socket.ClientManager
+	ticker     *kiteticker.ExtendedTicker
+	calculator *options.Calculator
 )
 
 func main() {
@@ -49,6 +50,9 @@ func main() {
 	kc := kiteconnect.NewWithEncToken(encToken)
 	ticker = kiteticker.StartTicker()
 	scanner := options.NewScanner(kc)
+
+	// Initialize Greeks Calculator (6% risk-free rate)
+	calculator = options.NewCalculator(scanner, 0.06)
 
 	// Initialize WebSocket Client Manager
 	manager = socket.NewClientManager(ticker)
@@ -81,6 +85,7 @@ func main() {
 
 	OptionScanner(scanner)
 	FilterCriteriaAndSubscribeTokens(scanner, ticker, cfg)
+	SubscribeToUnderlyings(scanner, ticker, cfg)
 
 	// Initialize Handler Controller
 	ctrl := handlers.NewController(kc)
@@ -251,9 +256,50 @@ func FilterCriteriaAndSubscribeTokens(scanner *options.Scanner, ticker *kitetick
 	}
 }
 
-// Update your tick handler to process options:
+// SubscribeToUnderlyings subscribes to underlying tokens for price tracking
+func SubscribeToUnderlyings(scanner *options.Scanner, ticker *kiteticker.ExtendedTicker, cfg *config.Config) {
+	// Get all unique underlyings from config
+	underlyingSet := make(map[string]bool)
+	for _, uc := range cfg.Underlyings {
+		underlyingSet[uc.Underlying] = true
+	}
+
+	// Find underlying tokens from instruments
+	underlyingTokens := make([]uint32, 0)
+	allInstruments, err := scanner.GetAllInstruments()
+	if err != nil {
+		log.Printf("Warning: Could not get all instruments to find underlying tokens: %v", err)
+		return
+	}
+
+	for _, inst := range allInstruments {
+		// Check if this is an underlying (not an option) and matches our config
+		if inst.InstrumentType == "EQ" && inst.Exchange=="NSE"{ // For Now we are only interested in Equity Instruments not in Futures or Options
+			if (inst.Tradingsymbol=="NIFTY 50" && underlyingSet["NIFTY"]) || underlyingSet[inst.Tradingsymbol] {
+				underlyingTokens = append(underlyingTokens, uint32(inst.InstrumentToken))
+				log.Printf("Found underlying token for %s: %d", inst.Tradingsymbol, inst.InstrumentToken)
+			}
+		}
+	}
+
+	if len(underlyingTokens) > 0 {
+		log.Printf("Subscribing to %d underlying tokens", len(underlyingTokens))
+		if err := ticker.Subscribe(underlyingTokens); err != nil {
+			log.Printf("Error subscribing to underlying tokens: %v", err)
+		} else {
+			if err := ticker.SetFullMode(underlyingTokens); err != nil {
+				log.Printf("Error setting mode for underlying tokens: %v", err)
+			}
+		}
+	}
+}
+
+// UpdateOptionData updates option data and calculates Greeks
 func UpdateOptionData(tick models.Tick, scanner *options.Scanner) {
 	inst, ok := scanner.GetInstrument(tick.InstrumentToken)
+	if inst.InstrumentType != "CE" && inst.InstrumentType != "PE" {
+		return
+	}
 	if !ok {
 		fmt.Println("Instrument not found ", tick.InstrumentToken)
 		return // Not an option
@@ -273,11 +319,18 @@ func UpdateOptionData(tick models.Tick, scanner *options.Scanner) {
 	}
 
 	// Update option data
+	var optionData *options.OptionData
 	if inst.InstrumentType == options.Call && strikeData.Call != nil {
 		strikeData.Call.UpdateFromTick(tick)
+		optionData = strikeData.Call
 	} else if inst.InstrumentType == options.Put && strikeData.Put != nil {
 		strikeData.Put.UpdateFromTick(tick)
+		optionData = strikeData.Put
 	}
 
-	// TODO: Next - Calculate Greeks
+	// Calculate Greeks if we have option data
+	if optionData != nil && calculator != nil {
+		calculator.CalculateAllGreeks(optionData, chain)
+	}
 }
+

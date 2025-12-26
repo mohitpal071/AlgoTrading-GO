@@ -13,10 +13,11 @@ import (
 
 // Scanner scans and filters option instruments from Kite Connect
 type Scanner struct {
-	kiteClient  *kiteconnect.Client
-	instruments map[uint32]*OptionInstrument          // token -> instrument
-	chains      map[string]map[time.Time]*OptionChain // underlying -> expiry -> chain
-	mu          sync.RWMutex
+	kiteClient     *kiteconnect.Client
+	instruments    map[uint32]*OptionInstrument          // token -> instrument
+	chains         map[string]map[time.Time]*OptionChain // underlying -> expiry -> chain
+	allInstruments []kiteconnect.Instrument              // Cache of all instruments for underlying lookup
+	mu             sync.RWMutex
 }
 
 // NewScanner creates a new option scanner
@@ -31,12 +32,12 @@ func NewScanner(kiteClient *kiteconnect.Client) *Scanner {
 var ist, _ = time.LoadLocation("Asia/Kolkata")
 
 func normalize(t time.Time) time.Time {
-    t = t.In(ist)
-    return time.Date(
-        t.Year(), t.Month(), t.Day(),
-        0, 0, 0, 0,
-        ist,
-    )
+	t = t.In(ist)
+	return time.Date(
+		t.Year(), t.Month(), t.Day(),
+		0, 0, 0, 0,
+		ist,
+	)
 }
 
 // ScanInstruments fetches all instruments and filters for options
@@ -55,34 +56,40 @@ func (s *Scanner) ScanInstruments() error {
 	// Clear existing data
 	s.instruments = make(map[uint32]*OptionInstrument)
 	s.chains = make(map[string]map[time.Time]*OptionChain)
+	s.allInstruments = allInstruments // Cache all instruments
 
 	optionCount := 0
-	log.Println(allInstruments[0])
+	if len(allInstruments) > 0 {
+		log.Println(allInstruments[0])
+	}
 	// Filter for options (CE or PE)
 	for _, inst := range allInstruments {
+		optInst := &OptionInstrument{
+			InstrumentToken: uint32(inst.InstrumentToken),
+			ExchangeToken:   uint32(inst.ExchangeToken),
+			Tradingsymbol:   inst.Tradingsymbol,
+			Name:            inst.Name,
+			Exchange:        inst.Exchange,
+			Segment:         inst.Segment,
+			InstrumentType:  OptionType(inst.InstrumentType),
+			StrikePrice:     inst.StrikePrice,
+			Expiry:          normalize(inst.Expiry.Time), //2026-02-24 00:00:00 +0530 IST
+			TickSize:        inst.TickSize,
+			LotSize:         int(inst.LotSize),
+			LastPrice:       inst.LastPrice,
+		}
+
+		s.instruments[optInst.InstrumentToken] = optInst
 		if inst.InstrumentType == "CE" || inst.InstrumentType == "PE" {
-			optInst := &OptionInstrument{
-				InstrumentToken: uint32(inst.InstrumentToken),
-				ExchangeToken:   uint32(inst.ExchangeToken),
-				Tradingsymbol:   inst.Tradingsymbol,
-				Name:            inst.Name,
-				Exchange:        inst.Exchange,
-				Segment:         inst.Segment,
-				InstrumentType:  OptionType(inst.InstrumentType),
-				StrikePrice:     inst.StrikePrice,
-				Expiry:          normalize(inst.Expiry.Time),//2026-02-24 00:00:00 +0530 IST
-				TickSize:        inst.TickSize,
-				LotSize:         int(inst.LotSize),
-				LastPrice:       inst.LastPrice,
-			}
-			
-			
-			s.instruments[optInst.InstrumentToken] = optInst
+
 			optionCount++
 
 			// Build option chain structure
 			// underlying := s.extractUnderlying(inst.Tradingsymbol)
 			underlying := inst.Name
+			// if underlying == "NIFTY" {
+			// 	underlying = "NIFTY 50"
+			// }
 			if underlying == "" {
 				continue
 			}
@@ -103,6 +110,8 @@ func (s *Scanner) ScanInstruments() error {
 
 			chain := s.chains[underlying][expiry]
 			if chain.Strikes[inst.StrikePrice] == nil {
+				chain.UnderlyingToken = uint32(inst.InstrumentToken)
+				chain.Underlying = underlying
 				chain.Strikes[inst.StrikePrice] = &StrikeData{
 					Strike:      inst.StrikePrice,
 					LastUpdated: time.Now(),
@@ -126,7 +135,7 @@ func (s *Scanner) ScanInstruments() error {
 			}
 		}
 	}
-	
+
 	var IST, _ = time.LoadLocation("Asia/Kolkata")
 	fmt.Println(normalize(time.Date(2025, 12, 30, 0, 0, 0, 0, IST)))
 	fmt.Println(s.chains["NIFTY"][normalize(time.Date(2025, 12, 30, 0, 0, 0, 0, IST))].Strikes[26000].Call.Tradingsymbol) // 2025-12-30 00:00:00 +0530 IST
@@ -319,9 +328,12 @@ func (s *Scanner) FilterOptions(criteria FilterCriteria) map[uint32]*OptionInstr
 
 	fmt.Println(criteria)
 
-	
-
 	for token, inst := range s.instruments {
+
+		if inst.InstrumentType != "CE" && inst.InstrumentType != "PE" {
+			continue
+		}
+
 		// Filter by underlying
 		underlying := inst.Name
 		if criteria.Underlying != "" && underlying != criteria.Underlying {
@@ -347,7 +359,7 @@ func (s *Scanner) FilterOptions(criteria FilterCriteria) map[uint32]*OptionInstr
 		}
 
 		// Filter by days to expiry
-		daysToExpiry := int(inst.Expiry.Sub(now).Hours() / 24)		
+		daysToExpiry := int(inst.Expiry.Sub(now).Hours() / 24)
 		if criteria.MinDaysToExpiry > 0 && daysToExpiry < criteria.MinDaysToExpiry {
 			continue
 		}
@@ -377,4 +389,11 @@ func (s *Scanner) GetAllTokens() []uint32 {
 // GetUnderlyingFromInstrument extracts underlying symbol from an option instrument
 func (s *Scanner) GetUnderlyingFromInstrument(inst *OptionInstrument) string {
 	return s.extractUnderlying(inst.Tradingsymbol)
+}
+
+// GetAllInstruments returns all instruments (for finding underlying tokens)
+func (s *Scanner) GetAllInstruments() ([]kiteconnect.Instrument, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.allInstruments, nil
 }
