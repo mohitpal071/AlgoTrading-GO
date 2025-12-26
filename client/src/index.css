@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-terminal-bg text-terminal-text;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Bloomberg Terminal style inputs */
+  input, select, textarea {
+    @apply bg-terminal-bg border border-terminal-border text-terminal-text;
+    font-family: inherit;
+    font-size: 11px;
+    padding: 2px 4px;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    @apply border-terminal-accent outline-none;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-terminal-panel border border-terminal-border;
+    box-shadow: inset 0 0 1px rgba(88, 166, 255, 0.05);
+  }
+
+  .panel-header {
+    @apply bg-terminal-border border-b border-terminal-border;
+    height: 24px;
+    min-height: 24px;
+  }
+
+  .btn-primary {
+    @apply bg-terminal-accent text-terminal-bg px-3 py-1 rounded text-xs font-semibold hover:opacity-90 transition-opacity;
+  }
+
+  .price-up {
+    @apply text-terminal-green font-semibold;
+  }
+
+  .price-down {
+    @apply text-terminal-red font-semibold;
+  }
+
+  .price-neutral {
+    @apply text-terminal-text;
+  }
+
+  /* Bloomberg Terminal style scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #0d1117;
+    border-left: 1px solid #21262d;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border: 1px solid #21262d;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #484f58;
+  }
+
+  /* Table row hover */
+  .ag-row:hover {
+    background-color: rgba(88, 166, 255, 0.1) !important;
+  }
+
+  /* Compact ag-grid styling */
+  .ag-theme-alpine-dark {
+    --ag-font-size: 11px;
+    --ag-header-height: 28px;
+    --ag-row-height: 24px;
+    --ag-header-background-color: #161b22;
+    --ag-odd-row-background-color: #0d1117;
+    --ag-row-hover-color: rgba(88, 166, 255, 0.1);
+    --ag-border-color: #21262d;
+    --ag-header-foreground-color: #58a6ff;
+    --ag-foreground-color: #c9d1d9;
+    --ag-background-color: #0d1117;
+  }
+}
+
