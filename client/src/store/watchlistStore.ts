@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Instrument, WatchlistItem } from '../types/instrument';
+import { Tick } from '../types/tick';
 
 export interface WatchlistGroup {
   id: string;
@@ -10,6 +11,8 @@ export interface WatchlistGroup {
 
 interface WatchlistStore {
   instruments: Map<string, Instrument>;
+  // Map instrument tokens to symbols for tick updates
+  tokenToSymbol: Map<number, string>;
   favorites: Set<string>;
   groups: Map<string, WatchlistGroup>;
   selectedGroupId: string | null;
@@ -17,6 +20,7 @@ interface WatchlistStore {
   // Actions
   addInstrument: (instrument: Instrument) => void;
   updateInstrument: (symbol: string, updates: Partial<Instrument>) => void;
+  updateInstrumentFromTick: (tick: Tick) => void;
   removeInstrument: (symbol: string) => void;
   toggleFavorite: (symbol: string) => void;
   getWatchlist: (groupId?: string | null) => WatchlistItem[];
@@ -150,29 +154,122 @@ export const useWatchlistStore = create<WatchlistStore>((set, get) => {
 
   return {
     instruments: instrumentsMap,
+    tokenToSymbol: new Map<number, string>(),
     favorites: new Set(['NIFTY', 'BANKNIFTY', 'RELIANCE']),
     groups: defaultGroups,
     selectedGroupId: 'indices', // Default to indices group
 
     addInstrument: (instrument: Instrument) => {
-      const { instruments } = get();
+      const { instruments, tokenToSymbol } = get();
+      const newInstruments = new Map(instruments);
+      newInstruments.set(instrument.symbol, instrument);
+      
+      // Update token mapping if token is available
+      const newTokenToSymbol = new Map(tokenToSymbol);
+      if (instrument.instrumentToken) {
+        newTokenToSymbol.set(instrument.instrumentToken, instrument.symbol);
+      }
+      
       set({
-        instruments: new Map(instruments).set(instrument.symbol, instrument),
+        instruments: newInstruments,
+        tokenToSymbol: newTokenToSymbol,
       });
     },
 
     updateInstrument: (symbol: string, updates: Partial<Instrument>) => {
-      const { instruments } = get();
+      const { instruments, tokenToSymbol } = get();
       const existing = instruments.get(symbol);
       if (existing) {
+        const updated = {
+          ...existing,
+          ...updates,
+          timestamp: Date.now(),
+        };
+        
+        // Update token mapping if token changed
+        const newTokenToSymbol = new Map(tokenToSymbol);
+        if (updated.instrumentToken && updated.instrumentToken !== existing.instrumentToken) {
+          if (existing.instrumentToken) {
+            newTokenToSymbol.delete(existing.instrumentToken);
+          }
+          newTokenToSymbol.set(updated.instrumentToken, symbol);
+        }
+        
         set({
-          instruments: new Map(instruments).set(symbol, {
-            ...existing,
-            ...updates,
-            timestamp: Date.now(),
-          }),
+          instruments: new Map(instruments).set(symbol, updated),
+          tokenToSymbol: newTokenToSymbol,
         });
       }
+    },
+
+    updateInstrumentFromTick: (tick: Tick) => {
+      const { instruments, tokenToSymbol } = get();
+      const symbol = tokenToSymbol.get(tick.instrumentToken);
+      
+      if (!symbol) {
+        // Token not mapped to any symbol, skip update
+        return;
+      }
+      
+      const existing = instruments.get(symbol);
+      if (!existing) {
+        return;
+      }
+      
+      // Extract bid/ask from depth if available
+      const bidPrice = tick.depth.buy.length > 0 ? tick.depth.buy[0].price : (tick.bidPrice || 0);
+      const askPrice = tick.depth.sell.length > 0 ? tick.depth.sell[0].price : (tick.askPrice || 0);
+      const bidSize = tick.depth.buy.length > 0 ? tick.depth.buy[0].quantity : (tick.bidQty || 0);
+      const askSize = tick.depth.sell.length > 0 ? tick.depth.sell[0].quantity : (tick.askQty || 0);
+      
+      // Calculate change and change percent
+      const previousClose = existing.previousClose || existing.close || tick.ohlc.close || tick.lastPrice;
+      const change = tick.netChange !== 0 ? tick.netChange : (tick.lastPrice - previousClose);
+      const changePercent = previousClose !== 0 ? (change / previousClose) * 100 : 0;
+      
+      const updates: Partial<Instrument> = {
+        instrumentToken: tick.instrumentToken,
+        lastPrice: tick.lastPrice,
+        open: tick.ohlc.open || existing.open,
+        high: tick.ohlc.high || existing.high,
+        low: tick.ohlc.low || existing.low,
+        close: tick.ohlc.close || existing.close,
+        change,
+        changePercent,
+        volume: tick.volumeTraded || tick.volume || existing.volume,
+        volumeTraded: tick.volumeTraded,
+        averageTradePrice: tick.averageTradePrice,
+        lastTradedQuantity: tick.lastTradedQuantity,
+        bid: bidPrice,
+        ask: askPrice,
+        bidSize,
+        askSize,
+        totalBuyQuantity: tick.totalBuyQuantity,
+        totalSellQuantity: tick.totalSellQuantity,
+        oi: tick.oi,
+        oiDayHigh: tick.oiDayHigh,
+        oiDayLow: tick.oiDayLow,
+        timestamp: tick.timestamp * 1000, // Convert to milliseconds
+        lastTradeTime: tick.lastTradeTime ? tick.lastTradeTime * 1000 : undefined,
+        netChange: tick.netChange,
+        isTradable: tick.isTradable,
+        isIndex: tick.isIndex,
+      };
+      
+      // Update high/low if new price exceeds current values
+      if (tick.lastPrice > (updates.high || 0)) {
+        updates.high = tick.lastPrice;
+      }
+      if (tick.lastPrice < (updates.low || Infinity) && updates.low !== undefined) {
+        updates.low = tick.lastPrice;
+      }
+      
+      set({
+        instruments: new Map(instruments).set(symbol, {
+          ...existing,
+          ...updates,
+        }),
+      });
     },
 
     removeInstrument: (symbol: string) => {

@@ -26,7 +26,7 @@ function App() {
         onDisconnect={disconnect}
       />
       <div className="flex-1 overflow-hidden">
-        <BloombergLayout />
+        <BloombergLayout wsStatus={status} />
       </div>
     </div>
   );
