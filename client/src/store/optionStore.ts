@@ -26,14 +26,20 @@ export const useOptionStore = create<OptionStore>((set, get) => ({
     const existing = options.get(tick.instrumentToken);
     
     if (existing) {
+      // Use depth data for bid/ask if available, otherwise use legacy fields
+      const bidPrice = tick.depth.buy.length > 0 ? tick.depth.buy[0].price : (tick.bidPrice || 0);
+      const askPrice = tick.depth.sell.length > 0 ? tick.depth.sell[0].price : (tick.askPrice || 0);
+      const bidQty = tick.depth.buy.length > 0 ? tick.depth.buy[0].quantity : (tick.bidQty || 0);
+      const askQty = tick.depth.sell.length > 0 ? tick.depth.sell[0].quantity : (tick.askQty || 0);
+      
       const updated: OptionData = {
         ...existing,
         lastPrice: tick.lastPrice,
-        bidPrice: tick.bidPrice,
-        askPrice: tick.askPrice,
-        bidQty: tick.bidQty,
-        askQty: tick.askQty,
-        volume: tick.volume,
+        bidPrice,
+        askPrice,
+        bidQty,
+        askQty,
+        volume: tick.volumeTraded || tick.volume || 0,
         oi: tick.oi,
         lastUpdated: tick.timestamp,
       };

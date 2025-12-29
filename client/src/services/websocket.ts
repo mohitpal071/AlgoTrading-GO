@@ -12,16 +12,36 @@ export class WebSocketService {
   private onTickCallback: ((tick: Tick) => void) | null = null;
   private onStatusChangeCallback: ((status: WebSocketStatus) => void) | null = null;
   private status: WebSocketStatus = 'disconnected';
+  private manuallyDisconnected: boolean = false;
+  private reconnectTimeoutId: number | null = null;
 
   constructor(url: string) {
     this.url = url;
   }
 
   connect(): void {
+    // Don't connect if already connected
     if (this.ws?.readyState === WebSocket.OPEN) {
       return;
     }
 
+    // Don't connect if manually disconnected
+    if (this.manuallyDisconnected) {
+      return;
+    }
+
+    // Clear any pending reconnect
+    if (this.reconnectTimeoutId !== null) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+
+    // Close existing connection if in connecting/connected state
+    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
+      this.ws.close();
+    }
+
+    this.manuallyDisconnected = false;
     this.setStatus('connecting');
     
     try {
@@ -31,6 +51,7 @@ export class WebSocketService {
         console.log('WebSocket connected');
         this.setStatus('connected');
         this.reconnectAttempts = 0;
+        this.manuallyDisconnected = false;
         
         // Resubscribe to tokens if we have any
         if (this.subscribedTokens.length > 0) {
@@ -47,15 +68,23 @@ export class WebSocketService {
         this.setStatus('error');
       };
 
-      this.ws.onclose = () => {
-        console.log('WebSocket disconnected');
+      this.ws.onclose = (event) => {
+        console.log('WebSocket disconnected', { code: event.code, reason: event.reason });
         this.setStatus('disconnected');
-        this.attemptReconnect();
+        
+        // Only attempt reconnect if not manually disconnected
+        if (!this.manuallyDisconnected) {
+          this.attemptReconnect();
+        }
       };
     } catch (error) {
       console.error('Failed to create WebSocket:', error);
       this.setStatus('error');
-      this.attemptReconnect();
+      
+      // Only attempt reconnect if not manually disconnected
+      if (!this.manuallyDisconnected) {
+        this.attemptReconnect();
+      }
     }
   }
 
@@ -99,52 +128,192 @@ export class WebSocketService {
     }
   }
 
+  /**
+   * Convert price from paise to rupees based on segment
+   * Segment is determined from the last byte of instrument token
+   */
+  private convertPrice(segment: number, val: number): number {
+    // NseCD = 3, BseCD = 5 use different conversion
+    if (segment === 3) {
+      return val / 10000000.0; // NseCD
+    } else if (segment === 5) {
+      return val / 10000.0; // BseCD
+    } else {
+      return val / 100.0; // Default (stocks, indices, etc.)
+    }
+  }
+
   private parseTickPacket(packet: ArrayBuffer): void {
-    // Parse individual tick packet (184 bytes for full mode)
-    // Format: [token (4 bytes)][last_price (4 bytes)][...]
+    // Parse individual tick packet according to Zerodha binary format
     if (packet.byteLength < 8) return;
 
     const view = new DataView(packet);
     const token = view.getUint32(0, false); // Big-endian
-    const lastPrice = view.getUint32(4, false) / 100.0; // Convert from paise
+    const segment = token & 0xFF; // Last byte determines segment
+    const isIndex = segment === 9; // Indices segment = 9
+    const isTradable = !isIndex;
 
-    // Parse more fields if available (full mode has 184 bytes)
-    let bidPrice = 0;
-    let askPrice = 0;
-    let bidQty = 0;
-    let askQty = 0;
-    let volume = 0;
-    let oi = 0;
+    // Determine mode based on packet length
+    const MODE_LTP_LENGTH = 8;
+    const MODE_QUOTE_INDEX_LENGTH = 28;
+    const MODE_FULL_INDEX_LENGTH = 32;
+    const MODE_QUOTE_LENGTH = 44;
+    const MODE_FULL_LENGTH = 184;
 
-    if (packet.byteLength >= 184) {
-      // Full mode parsing
-      volume = view.getUint32(16, false);
-      oi = view.getUint32(48, false);
+    let tick: Tick;
+
+    // Mode LTP (8 bytes) - only last price
+    if (packet.byteLength === MODE_LTP_LENGTH) {
+      const lastPrice = this.convertPrice(segment, view.getUint32(4, false));
+      tick = {
+        mode: 'ltp',
+        instrumentToken: token,
+        isTradable,
+        isIndex,
+        timestamp: Math.floor(Date.now() / 1000),
+        lastTradeTime: 0,
+        lastPrice,
+        lastTradedQuantity: 0,
+        averageTradePrice: 0,
+        volumeTraded: 0,
+        totalBuyQuantity: 0,
+        totalSellQuantity: 0,
+        totalBuy: 0,
+        totalSell: 0,
+        oi: 0,
+        oiDayHigh: 0,
+        oiDayLow: 0,
+        netChange: 0,
+        ohlc: { open: 0, high: 0, low: 0, close: 0 },
+        depth: { buy: [], sell: [] },
+        // Legacy fields
+        volume: 0,
+      };
+    }
+    // Mode Quote Index (28 bytes) or Full Index (32 bytes)
+    else if (packet.byteLength === MODE_QUOTE_INDEX_LENGTH || packet.byteLength === MODE_FULL_INDEX_LENGTH) {
+      const lastPrice = this.convertPrice(segment, view.getUint32(4, false));
+      const high = this.convertPrice(segment, view.getUint32(8, false));
+      const low = this.convertPrice(segment, view.getUint32(12, false));
+      const open = this.convertPrice(segment, view.getUint32(16, false));
+      const close = this.convertPrice(segment, view.getUint32(20, false));
+      const netChange = lastPrice - close;
       
-      // Depth data starts at offset 64
-      if (packet.byteLength >= 76) {
-        bidQty = view.getUint32(64, false);
-        bidPrice = view.getUint32(68, false) / 100.0;
-      }
-      if (packet.byteLength >= 88) {
-        askQty = view.getUint32(124, false);
-        askPrice = view.getUint32(128, false) / 100.0;
+      tick = {
+        mode: packet.byteLength === MODE_FULL_INDEX_LENGTH ? 'full' : 'quote',
+        instrumentToken: token,
+        isTradable,
+        isIndex,
+        timestamp: packet.byteLength === MODE_FULL_INDEX_LENGTH 
+          ? view.getUint32(28, false) 
+          : Math.floor(Date.now() / 1000),
+        lastTradeTime: 0,
+        lastPrice,
+        lastTradedQuantity: 0,
+        averageTradePrice: 0,
+        volumeTraded: 0,
+        totalBuyQuantity: 0,
+        totalSellQuantity: 0,
+        totalBuy: 0,
+        totalSell: 0,
+        oi: 0,
+        oiDayHigh: 0,
+        oiDayLow: 0,
+        netChange,
+        ohlc: { open, high, low, close },
+        depth: { buy: [], sell: [] },
+        volume: 0,
+      };
+    }
+    // Mode Quote (44 bytes) or Full (184 bytes) for stocks
+    else {
+      const lastPrice = this.convertPrice(segment, view.getUint32(4, false));
+      const lastTradedQuantity = view.getUint32(8, false);
+      const averageTradePrice = this.convertPrice(segment, view.getUint32(12, false));
+      const volumeTraded = view.getUint32(16, false);
+      const totalBuyQuantity = view.getUint32(20, false);
+      const totalSellQuantity = view.getUint32(24, false);
+      const open = this.convertPrice(segment, view.getUint32(28, false));
+      const high = this.convertPrice(segment, view.getUint32(32, false));
+      const low = this.convertPrice(segment, view.getUint32(36, false));
+      const close = this.convertPrice(segment, view.getUint32(40, false));
+      const netChange = lastPrice - close;
+
+      // Initialize tick with quote mode data
+      tick = {
+        mode: 'quote',
+        instrumentToken: token,
+        isTradable,
+        isIndex,
+        timestamp: Math.floor(Date.now() / 1000),
+        lastTradeTime: 0,
+        lastPrice,
+        lastTradedQuantity,
+        averageTradePrice,
+        volumeTraded,
+        totalBuyQuantity,
+        totalSellQuantity,
+        totalBuy: 0,
+        totalSell: 0,
+        oi: 0,
+        oiDayHigh: 0,
+        oiDayLow: 0,
+        netChange,
+        ohlc: { open, high, low, close },
+        depth: { buy: [], sell: [] },
+        volume: volumeTraded,
+      };
+
+      // Parse full mode (184 bytes) - includes OI, depth, timestamps
+      if (packet.byteLength === MODE_FULL_LENGTH) {
+        tick.mode = 'full';
+        tick.lastTradeTime = view.getUint32(44, false);
+        tick.oi = view.getUint32(48, false);
+        tick.oiDayHigh = view.getUint32(52, false);
+        tick.oiDayLow = view.getUint32(56, false);
+        tick.timestamp = view.getUint32(60, false);
+
+        // Parse market depth (5 levels each for buy and sell)
+        // Buy depth starts at offset 64, Sell depth at 124
+        // Each level is 12 bytes: quantity(4), price(4), orders(2)
+        const buyDepth: typeof tick.depth.buy = [];
+        const sellDepth: typeof tick.depth.sell = [];
+        
+        let buyPos = 64;
+        let sellPos = 124;
+        
+        for (let i = 0; i < 5; i++) {
+          // Buy depth
+          const buyQty = view.getUint32(buyPos, false);
+          const buyPrice = this.convertPrice(segment, view.getUint32(buyPos + 4, false));
+          const buyOrders = view.getUint16(buyPos + 8, false);
+          buyDepth.push({ price: buyPrice, quantity: buyQty, orders: buyOrders });
+          
+          // Sell depth
+          const sellQty = view.getUint32(sellPos, false);
+          const sellPrice = this.convertPrice(segment, view.getUint32(sellPos + 4, false));
+          const sellOrders = view.getUint16(sellPos + 8, false);
+          sellDepth.push({ price: sellPrice, quantity: sellQty, orders: sellOrders });
+          
+          buyPos += 12;
+          sellPos += 12;
+        }
+        
+        tick.depth = { buy: buyDepth, sell: sellDepth };
+        
+        // Set legacy bid/ask fields from first depth level
+        if (buyDepth.length > 0) {
+          tick.bidPrice = buyDepth[0].price;
+          tick.bidQty = buyDepth[0].quantity;
+        }
+        if (sellDepth.length > 0) {
+          tick.askPrice = sellDepth[0].price;
+          tick.askQty = sellDepth[0].quantity;
+        }
       }
     }
 
-    const tick: Tick = {
-      instrumentToken: token,
-      lastPrice,
-      bidPrice,
-      askPrice,
-      bidQty,
-      askQty,
-      volume,
-      oi,
-      timestamp: Date.now(),
-    };
-
-    if (this.onTickCallback) {
+    if (this.onTickCallback && tick) {
       this.onTickCallback(tick);
     }
   }
@@ -153,9 +322,10 @@ export class WebSocketService {
     this.subscribedTokens = [...new Set([...this.subscribedTokens, ...tokens])];
     
     if (this.ws?.readyState === WebSocket.OPEN) {
+      // Backend expects: { "a": "subscribe", "v": [tokens] }
       this.ws.send(JSON.stringify({
-        type: 'subscribe',
-        val: tokens,
+        a: 'subscribe',
+        v: tokens,
       }));
     }
   }
@@ -166,9 +336,10 @@ export class WebSocketService {
     );
     
     if (this.ws?.readyState === WebSocket.OPEN) {
+      // Backend expects: { "a": "unsubscribe", "v": [tokens] }
       this.ws.send(JSON.stringify({
-        type: 'unsubscribe',
-        val: tokens,
+        a: 'unsubscribe',
+        v: tokens,
       }));
     }
   }
@@ -193,6 +364,11 @@ export class WebSocketService {
   }
 
   private attemptReconnect(): void {
+    // Don't reconnect if manually disconnected
+    if (this.manuallyDisconnected) {
+      return;
+    }
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('Max reconnect attempts reached');
       return;
@@ -203,17 +379,32 @@ export class WebSocketService {
     
     console.log(`Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`);
     
-    setTimeout(() => {
-      this.connect();
+    this.reconnectTimeoutId = window.setTimeout(() => {
+      if (!this.manuallyDisconnected) {
+        this.connect();
+      }
+      this.reconnectTimeoutId = null;
     }, delay);
   }
 
   disconnect(): void {
+    this.manuallyDisconnected = true;
+    
+    // Clear any pending reconnect
+    if (this.reconnectTimeoutId !== null) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+    
     if (this.ws) {
+      // Remove event handlers to prevent reconnect attempt
+      this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
     }
+    
     this.setStatus('disconnected');
+    this.reconnectAttempts = 0;
   }
 }
 
