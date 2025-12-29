@@ -454,3 +454,13 @@ func (s *Scanner) GetAllInstruments() ([]kiteconnect.Instrument, error) {
 	defer s.mu.RUnlock()
 	return s.allInstruments, nil
 }
+
+
+func (s *Scanner) GetAllInstrumentsMap() (map[uint32]*OptionInstrument, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	instrumentsMap := s.instruments
+
+	return instrumentsMap, nil
+}

@@ -90,7 +90,7 @@ func main() {
 	SubscribeToUnderlyings(scanner, ticker, cfg)
 
 	// Initialize Handler Controller
-	ctrl := handlers.NewController(kc)
+	ctrl := handlers.NewController(kc, scanner)
 
 	r := gin.Default()
 
@@ -132,6 +132,7 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"ltp": tick.LastPrice})
 	})
 
+	r.GET("/instruments", ctrl.GetInstruments)
 	r.GET("/user/profile/full", ctrl.GetProfile)
 	r.GET("/user/margins", ctrl.GetMargins)
 	r.GET("/portfolio/holdings", ctrl.GetHoldings)
@@ -276,8 +277,8 @@ func SubscribeToUnderlyings(scanner *options.Scanner, ticker *kiteticker.Extende
 
 	for _, inst := range allInstruments {
 		// Check if this is an underlying (not an option) and matches our config
-		if inst.InstrumentType == "EQ" && inst.Exchange=="NSE"{ // For Now we are only interested in Equity Instruments not in Futures or Options
-			if (inst.Tradingsymbol=="NIFTY 50" && underlyingSet["NIFTY"]) || underlyingSet[inst.Tradingsymbol] {
+		if inst.InstrumentType == "EQ" && inst.Exchange == "NSE" { // For Now we are only interested in Equity Instruments not in Futures or Options
+			if (inst.Tradingsymbol == "NIFTY 50" && underlyingSet["NIFTY"]) || underlyingSet[inst.Tradingsymbol] {
 				underlyingTokens = append(underlyingTokens, uint32(inst.InstrumentToken))
 				log.Printf("Found underlying token for %s: %d", inst.Tradingsymbol, inst.InstrumentToken)
 			}
@@ -335,4 +336,3 @@ func UpdateOptionData(tick models.Tick, scanner *options.Scanner) {
 		calculator.CalculateAllGreeks(optionData, chain)
 	}
 }
-
