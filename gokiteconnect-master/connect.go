@@ -266,10 +266,12 @@ func (c *Client) do(method, uri string, params url.Values, headers http.Header) 
 		headers.Add("Authorization", authHeader)
 	}
 
-	fmt.Printf("%s%s\n", c.baseURI, uri)
 	if uri == URIGetInstruments {
+		fmt.Println("https://api.kite.trade/instruments")
 		return c.httpClient.Do(method, "https://api.kite.trade/instruments", nil, headers)
 	}
+	fmt.Printf("%s%s\n", c.baseURI, uri)
+
 	return c.httpClient.Do(method, c.baseURI+uri, params, headers)
 }
 
