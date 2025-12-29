@@ -61,6 +61,8 @@ func main() {
 	ticker.OnBinaryTick(func(tick []byte) {
 		// Broadcast raw bytes to connected WS clients
 		// fmt.Println(tick)
+		// fmt.Println("Binary Message Received: ", tick)
+
 		manager.Broadcast(tick)
 	})
 

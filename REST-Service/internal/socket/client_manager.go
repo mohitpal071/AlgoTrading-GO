@@ -58,19 +58,19 @@ func (m *ClientManager) Start() {
 
 		case msg := <-m.broadcast:
 			for c := range m.clientList {
-				if len(msg) == 1 {
+				// if len(msg) == 1 {
 					if err := c.conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
 						log.Printf("Write error: %v", err)
 						c.conn.Close()
 						m.unregister <- c
 					}
-				} else {
-					if err := c.conn.WriteMessage(websocket.BinaryMessage, c.filterBinaryMsg(msg)); err != nil {
-						log.Printf("Write error: %v", err)
-						c.conn.Close()
-						m.unregister <- c
-					}
-				}
+				// } else {
+				// 	if err := c.conn.WriteMessage(websocket.BinaryMessage, c.filterBinaryMsg(msg)); err != nil {
+				// 		log.Printf("Write error: %v", err)
+				// 		c.conn.Close()
+				// 		m.unregister <- c
+				// 	}
+				// }
 
 			}
 
