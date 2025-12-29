@@ -21,4 +21,5 @@
 *.njsproj
 *.sln
 *.sw?
+*.csv
 

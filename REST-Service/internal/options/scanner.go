@@ -3,12 +3,16 @@ package options
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	kiteconnect "gokiteconnect-master"
+
+	"github.com/gocarina/gocsv"
 )
 
 // Scanner scans and filters option instruments from Kite Connect
@@ -40,6 +44,52 @@ func normalize(t time.Time) time.Time {
 	)
 }
 
+// loadInstrumentsFromCSV loads instruments from CSV file as fallback
+func (s *Scanner) loadInstrumentsFromCSV() (kiteconnect.Instruments, error) {
+	// Try multiple possible paths for the CSV file
+	possiblePaths := []string{
+		"../../../instruments.csv",                         // From REST-Service/internal/options/
+		"../../instruments.csv",                            // From REST-Service/internal/
+		"../instruments.csv",                               // From REST-Service/
+		"instruments.csv",                                  // Current directory
+		filepath.Join("..", "..", "..", "instruments.csv"), // Absolute relative path
+	}
+
+	var file *os.File
+	var err error
+	var usedPath string
+
+	// Try each path until one works
+	for _, path := range possiblePaths {
+		absPath, pathErr := filepath.Abs(path)
+		if pathErr != nil {
+			continue
+		}
+
+		file, err = os.Open(absPath)
+		if err == nil {
+			usedPath = absPath
+			break
+		}
+	}
+
+	if file == nil {
+		return nil, fmt.Errorf("failed to find instruments.csv in any of the expected locations: %v", possiblePaths)
+	}
+	defer file.Close()
+
+	log.Printf("Loading instruments from CSV: %s", usedPath)
+
+	// Parse CSV into instruments
+	var instruments kiteconnect.Instruments
+	if err := gocsv.UnmarshalFile(file, &instruments); err != nil {
+		return nil, fmt.Errorf("failed to parse CSV file: %w", err)
+	}
+
+	log.Printf("Successfully loaded %d instruments from CSV", len(instruments))
+	return instruments, nil
+}
+
 // ScanInstruments fetches all instruments and filters for options
 func (s *Scanner) ScanInstruments() error {
 	log.Println("Scanning for option instruments...")
@@ -47,7 +97,14 @@ func (s *Scanner) ScanInstruments() error {
 	// Fetch all instruments from Kite Connect
 	allInstruments, err := s.kiteClient.GetInstruments()
 	if err != nil {
-		return fmt.Errorf("failed to fetch instruments: %w", err)
+		log.Printf("Failed to fetch instruments from Kite Connect: %v", err)
+		log.Println("Falling back to CSV file...")
+
+		// Fallback to CSV file
+		allInstruments, err = s.loadInstrumentsFromCSV()
+		if err != nil {
+			return fmt.Errorf("failed to fetch instruments from API and CSV fallback: %w", err)
+		}
 	}
 
 	s.mu.Lock()

@@ -298,7 +298,7 @@ func (c *Client) parseInstruments(data interface{}, url string, params url.Value
 	if resp, err = c.do(http.MethodGet, url, params, nil); err != nil {
 		return err
 	}
-
+	
 	// Unmarshal CSV response to instruments
 	if err = gocsv.UnmarshalBytes(resp.Body, data); err != nil {
 		return NewError(GeneralError, fmt.Sprintf("Error parsing csv response: %v", err), nil)
