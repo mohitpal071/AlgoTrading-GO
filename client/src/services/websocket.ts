@@ -44,14 +44,21 @@ export class WebSocketService {
     this.manuallyDisconnected = false;
     this.setStatus('connecting');
     
+    console.log('[WebSocketService] Attempting to connect to:', this.url.replace(/enctoken=[^&]+/, 'enctoken=***'));
+    
     try {
       this.ws = new WebSocket(this.url);
       // Set binaryType to 'arraybuffer' to receive binary data as ArrayBuffer
       // Reference implementation: this.ws.binaryType = "arraybuffer"
       this.ws.binaryType = 'arraybuffer';
       
+      // Set up event handlers BEFORE the connection might close
+      let connectionEstablished = false;
+      
       this.ws.onopen = () => {
-        console.log('WebSocket connected');
+        connectionEstablished = true;
+        console.log('[WebSocketService] ✓ WebSocket connected successfully');
+        console.log('[WebSocketService] Ready state:', this.ws?.readyState);
         console.log('[WebSocketService] onTickCallback is set:', !!this.onTickCallback);
         this.setStatus('connected');
         this.reconnectAttempts = 0;
@@ -59,7 +66,7 @@ export class WebSocketService {
         
         // Resubscribe to tokens if we have any
         if (this.subscribedTokens.length > 0 && this.ws) {
-          console.log('Resubscribing to tokens on reconnect:', this.subscribedTokens);
+          console.log('[WebSocketService] Resubscribing to tokens on reconnect:', this.subscribedTokens);
           // Send subscription message directly since we're already connected
           this.ws.send(JSON.stringify({
             a: 'subscribe',
@@ -73,21 +80,59 @@ export class WebSocketService {
       };
 
       this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('[WebSocketService] ✗ WebSocket error occurred:', error);
+        console.error('[WebSocketService] Error details:', {
+          readyState: this.ws?.readyState,
+          url: this.url.replace(/enctoken=[^&]+/, 'enctoken=***'),
+        });
         this.setStatus('error');
       };
 
       this.ws.onclose = (event) => {
-        console.log('WebSocket disconnected', { code: event.code, reason: event.reason });
+        const wasClean = event.wasClean;
+        const code = event.code;
+        const reason = event.reason;
+        
+        console.log('[WebSocketService] WebSocket closed', { 
+          wasClean, 
+          code, 
+          reason,
+          connectionEstablished,
+          readyState: this.ws?.readyState 
+        });
+        
+        // Log specific error codes
+        if (code === 1006) {
+          console.error('[WebSocketService] Connection closed abnormally (1006). Possible causes:');
+          console.error('  - Invalid or expired ENCTOKEN');
+          console.error('  - Network connectivity issues');
+          console.error('  - Server rejected the connection');
+        } else if (code === 1002) {
+          console.error('[WebSocketService] Protocol error (1002). Check URL format and parameters.');
+        } else if (code === 1003) {
+          console.error('[WebSocketService] Unsupported data (1003). Check message format.');
+        } else if (code === 1008) {
+          console.error('[WebSocketService] Policy violation (1008). Check authentication parameters.');
+        }
+        
         this.setStatus('disconnected');
         
-        // Only attempt reconnect if not manually disconnected
-        if (!this.manuallyDisconnected) {
+        // Only attempt reconnect if not manually disconnected and connection was established
+        if (!this.manuallyDisconnected && connectionEstablished) {
           this.attemptReconnect();
+        } else if (!connectionEstablished) {
+          console.error('[WebSocketService] Connection closed before it was established. Check:');
+          console.error('  1. VITE_ENCTOKEN is set correctly in .env file');
+          console.error('  2. ENCTOKEN is valid and not expired');
+          console.error('  3. Network connectivity to wss://ws.zerodha.com');
         }
       };
     } catch (error) {
-      console.error('Failed to create WebSocket:', error);
+      console.error('[WebSocketService] ✗ Failed to create WebSocket:', error);
+      if (error instanceof Error) {
+        console.error('[WebSocketService] Error message:', error.message);
+        console.error('[WebSocketService] Error stack:', error.stack);
+      }
       this.setStatus('error');
       
       // Only attempt reconnect if not manually disconnected

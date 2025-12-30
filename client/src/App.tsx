@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useWebSocket } from './hooks/useWebSocket';
 import { WebSocketProvider } from './contexts/WebSocketContext';
@@ -7,11 +7,23 @@ import WatchlistPage from './pages/WatchlistPage';
 import OptionChainPage from './pages/OptionChainPage';
 import PositionsPage from './pages/PositionsPage';
 import OrdersPage from './pages/OrdersPage';
-
-const WS_URL = 'ws://localhost:8080/ws';
+import { buildZerodhaWebSocketUrl } from './utils/zerodhaWs';
 
 function App() {
-  const { status, connect, disconnect, subscribe, unsubscribe } = useWebSocket(WS_URL);
+  const wsUrl = useMemo(() => {
+    try {
+      return buildZerodhaWebSocketUrl();
+    } catch (error) {
+      console.error('[App] Failed to build WebSocket URL:', error);
+      if (error instanceof Error) {
+        console.error('[App] Error:', error.message);
+      }
+      // Return a placeholder URL that will fail gracefully
+      return 'wss://ws.zerodha.com/';
+    }
+  }, []);
+  
+  const { status, connect, disconnect, subscribe, unsubscribe } = useWebSocket(wsUrl);
 
   // Auto-connect on mount
   useEffect(() => {
