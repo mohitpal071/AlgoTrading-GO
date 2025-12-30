@@ -156,6 +156,7 @@ func main() {
 	r.GET("/trades", ctrl.GetTrades)
 	r.GET("/orders/:order_id", ctrl.GetOrderHistory)
 	r.GET("/orders/:order_id/trades", ctrl.GetOrderTrades)
+	r.GET("/historical/:instrument_token/:interval", ctrl.GetHistoricalData)
 
 	r.POST("/orders/:variety", ctrl.PlaceOrder)
 	r.PUT("/orders/:variety/:order_id", ctrl.ModifyOrder)

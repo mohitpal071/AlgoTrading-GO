@@ -142,3 +142,87 @@ export async function getInstruments(): Promise<ParsedInstrument[]> {
   return instruments;
 }
 
+// ----- Historical Candle Data API -----
+
+export type HistoricalInterval = 
+  | 'minute' 
+  | '3minute' 
+  | '5minute' 
+  | '10minute' 
+  | '15minute' 
+  | '30minute' 
+  | '60minute' 
+  | 'day';
+
+export interface HistoricalCandle {
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  oi?: number; // Open Interest (optional)
+}
+
+export interface HistoricalDataResponse {
+  status: string;
+  data: {
+    candles: Array<[string, number, number, number, number, number, number?]>;
+  };
+}
+
+/**
+ * Fetches historical candle data from backend API (which proxies to Zerodha)
+ * @param instrumentToken The instrument token
+ * @param interval The candle interval (minute, 5minute, day, etc.)
+ * @param from Start date in yyyy-mm-dd or yyyy-mm-dd hh:mm:ss format
+ * @param to End date in yyyy-mm-dd or yyyy-mm-dd hh:mm:ss format
+ * @param options Optional parameters (continuous, oi)
+ */
+export async function getHistoricalData(
+  instrumentToken: number,
+  interval: HistoricalInterval,
+  from: string,
+  to: string,
+  options?: {
+    continuous?: boolean;
+    oi?: boolean;
+  }
+): Promise<HistoricalCandle[]> {
+  const url = new URL(`${API_BASE}/historical/${instrumentToken}/${interval}`);
+  
+  url.searchParams.set('from', from);
+  url.searchParams.set('to', to);
+  
+  if (options?.continuous) {
+    url.searchParams.set('continuous', '1');
+  }
+  if (options?.oi) {
+    url.searchParams.set('oi', '1');
+  }
+
+  const response = await fetch(url.toString());
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to fetch historical data: ${response.statusText}`);
+  }
+
+  const data: HistoricalDataResponse = await response.json();
+
+  if (data.status !== 'success') {
+    throw new Error('Historical data API returned error status');
+  }
+
+  // Parse candles: [timestamp, open, high, low, close, volume, oi?]
+  return data.data.candles.map((candle) => ({
+    timestamp: candle[0] as string,
+    open: candle[1] as number,
+    high: candle[2] as number,
+    low: candle[3] as number,
+    close: candle[4] as number,
+    volume: candle[5] as number,
+    oi: candle[6] as number | undefined,
+  }));
+}
+

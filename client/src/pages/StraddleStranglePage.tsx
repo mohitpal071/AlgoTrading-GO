@@ -3,9 +3,10 @@ import OptionChainSearch from '../components/panels/OptionChainSearch';
 import { useOptionStore } from '../store/optionStore';
 import { useInstrumentStore } from '../store/instrumentStore';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
-import { ParsedInstrument } from '../services/api';
+import { getHistoricalData, HistoricalCandle, HistoricalInterval } from '../services/api';
 import { OptionData } from '../types/option';
 import { formatPrice, formatStrike } from '../utils/formatters';
+import StrategyPriceChart, { PriceDataPoint } from '../components/charts/StrategyPriceChart';
 
 type StrategyType = 'straddle' | 'strangle';
 
@@ -37,8 +38,27 @@ export default function StraddleStranglePage() {
   const [callStrike, setCallStrike] = useState<number | null>(null);
   const [putStrike, setPutStrike] = useState<number | null>(null);
   const [availableStrikes, setAvailableStrikes] = useState<number[]>([]);
+  const [priceHistory, setPriceHistory] = useState<PriceDataPoint[]>([]);
+  const [historicalData, setHistoricalData] = useState<HistoricalCandle[]>([]);
+  const [chartInterval, setChartInterval] = useState<HistoricalInterval>('minute');
+  const [isLoadingHistorical, setIsLoadingHistorical] = useState(false);
+  
+  // Date range state - default to last 3 days
+  const getDefaultDates = () => {
+    const today = new Date();
+    const threeDaysAgo = new Date(today);
+    threeDaysAgo.setDate(today.getDate() - 3);
+    return {
+      from: threeDaysAgo.toISOString().split('T')[0],
+      to: today.toISOString().split('T')[0],
+    };
+  };
+  const [fromDate, setFromDate] = useState<string>(getDefaultDates().from);
+  const [toDate, setToDate] = useState<string>(getDefaultDates().to);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   
   const currentSubscribedTokensRef = useRef<number[]>([]);
+  const lastUpdateTimeRef = useRef<number>(0);
 
   // Helper function to get the search name for options
   const getOptionSearchName = (underlying: string): string => {
@@ -224,6 +244,117 @@ export default function StraddleStranglePage() {
     };
   }, [unsubscribe, wsStatus]);
 
+  // Fetch historical data when strikes are selected
+  useEffect(() => {
+    const fetchHistoricalData = async () => {
+      if (!selectedUnderlying || !selectedExpiry || allInstruments.length === 0) {
+        setHistoricalData([]);
+        return;
+      }
+
+      let callToken: number | undefined;
+      let putToken: number | undefined;
+
+      if (strategyType === 'straddle' && strike) {
+        const optionSearchName = getOptionSearchName(selectedUnderlying);
+        const callInst = allInstruments.find(
+          (inst) =>
+            inst.instrumentType === 'CE' &&
+            inst.exchange === 'NFO' &&
+            inst.name === optionSearchName &&
+            inst.expiry === selectedExpiry &&
+            inst.strikePrice === strike
+        );
+        const putInst = allInstruments.find(
+          (inst) =>
+            inst.instrumentType === 'PE' &&
+            inst.exchange === 'NFO' &&
+            inst.name === optionSearchName &&
+            inst.expiry === selectedExpiry &&
+            inst.strikePrice === strike
+        );
+        callToken = callInst?.instrumentToken;
+        putToken = putInst?.instrumentToken;
+      } else if (strategyType === 'strangle' && callStrike && putStrike) {
+        const optionSearchName = getOptionSearchName(selectedUnderlying);
+        const callInst = allInstruments.find(
+          (inst) =>
+            inst.instrumentType === 'CE' &&
+            inst.exchange === 'NFO' &&
+            inst.name === optionSearchName &&
+            inst.expiry === selectedExpiry &&
+            inst.strikePrice === callStrike
+        );
+        const putInst = allInstruments.find(
+          (inst) =>
+            inst.instrumentType === 'PE' &&
+            inst.exchange === 'NFO' &&
+            inst.name === optionSearchName &&
+            inst.expiry === selectedExpiry &&
+            inst.strikePrice === putStrike
+        );
+        callToken = callInst?.instrumentToken;
+        putToken = putInst?.instrumentToken;
+      }
+
+      if (!callToken || !putToken) {
+        setHistoricalData([]);
+        return;
+      }
+
+      setIsLoadingHistorical(true);
+      try {
+        // Use selected date range
+        // Format dates for API (yyyy-mm-dd format)
+        const fromDateStr = fromDate;
+        const toDateStr = toDate;
+
+        // Fetch historical data for both call and put
+        const [callData, putData] = await Promise.all([
+          getHistoricalData(callToken, chartInterval, fromDateStr, toDateStr, { oi: true }).catch(() => []),
+          getHistoricalData(putToken, chartInterval, fromDateStr, toDateStr, { oi: true }).catch(() => []),
+        ]);
+
+        // Combine call and put prices to get strategy prices
+        const strategyHistoricalData: HistoricalCandle[] = [];
+        const callMap = new Map<string, HistoricalCandle>();
+        callData.forEach((candle) => {
+          callMap.set(candle.timestamp, candle);
+        });
+
+        putData.forEach((putCandle) => {
+          const callCandle = callMap.get(putCandle.timestamp);
+          if (callCandle) {
+            // Combine prices: strategy price = call price + put price
+            strategyHistoricalData.push({
+              timestamp: putCandle.timestamp,
+              open: callCandle.open + putCandle.open,
+              high: callCandle.high + putCandle.high,
+              low: callCandle.low + putCandle.low,
+              close: callCandle.close + putCandle.close,
+              volume: Math.min(callCandle.volume, putCandle.volume),
+              oi: callCandle.oi && putCandle.oi ? callCandle.oi + putCandle.oi : undefined,
+            });
+          }
+        });
+
+        // Sort by timestamp
+        strategyHistoricalData.sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+
+        setHistoricalData(strategyHistoricalData);
+      } catch (error) {
+        console.error('Failed to fetch historical data:', error);
+        setHistoricalData([]);
+      } finally {
+        setIsLoadingHistorical(false);
+      }
+    };
+
+    fetchHistoricalData();
+  }, [selectedUnderlying, selectedExpiry, strategyType, strike, callStrike, putStrike, chartInterval, fromDate, toDate, allInstruments]);
+
   // Calculate strategy price
   const calculateStrategyPrice = (): StrategyPrice | null => {
     if (!selectedUnderlying || !selectedExpiry) return null;
@@ -293,6 +424,28 @@ export default function StraddleStranglePage() {
 
   const strategyPrice = calculateStrategyPrice();
 
+  // Calculate breakeven points
+  const calculateBreakevenPoints = (): { upper: number; lower: number } | null => {
+    if (!strategyPrice || !strategyPrice.call || !strategyPrice.put) return null;
+
+    const totalPremium = strategyPrice.ltp; // Using LTP as the premium paid/received
+    
+    if (strategyType === 'straddle' && strike) {
+      return {
+        upper: strike + totalPremium,
+        lower: strike - totalPremium,
+      };
+    } else if (strategyType === 'strangle' && callStrike && putStrike) {
+      return {
+        upper: callStrike + totalPremium,
+        lower: putStrike - totalPremium,
+      };
+    }
+    return null;
+  };
+
+  const breakevenPoints = calculateBreakevenPoints();
+
   const handleUnderlyingChange = (params: { name: string }) => {
     if (currentSubscribedTokensRef.current.length > 0 && wsStatus === 'connected') {
       unsubscribe(currentSubscribedTokensRef.current);
@@ -311,7 +464,51 @@ export default function StraddleStranglePage() {
     setStrike(null);
     setCallStrike(null);
     setPutStrike(null);
+    setPriceHistory([]); // Clear price history when strategy changes
+    setHistoricalData([]); // Clear historical data when strategy changes
   };
+
+  // Update price history when strategy price changes
+  useEffect(() => {
+    if (!strategyPrice) {
+      return;
+    }
+
+    const now = Date.now();
+    // Throttle updates to once per second to avoid too many data points
+    if (now - lastUpdateTimeRef.current < 1000) {
+      return;
+    }
+
+    lastUpdateTimeRef.current = now;
+
+    const newDataPoint: PriceDataPoint = {
+      time: new Date(now).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+      ltp: strategyPrice.ltp,
+      bid: strategyPrice.bid,
+      ask: strategyPrice.ask,
+      timestamp: now,
+      callPrice: strategyPrice.call?.lastPrice,
+      putPrice: strategyPrice.put?.lastPrice,
+    };
+
+    setPriceHistory((prev) => {
+      const updated = [...prev, newDataPoint];
+      // Keep only last 500 points to prevent memory issues
+      return updated.slice(-500);
+    });
+  }, [strategyPrice]);
+
+  // Clear price history when underlying, expiry, or strikes change
+  useEffect(() => {
+    setPriceHistory([]);
+    lastUpdateTimeRef.current = 0;
+    // Note: Historical data is cleared and refetched in the historical data useEffect
+  }, [selectedUnderlying, selectedExpiry, strategyType, strike, callStrike, putStrike]);
 
   return (
     <div className="h-full w-full bg-terminal-bg flex flex-col">
@@ -383,6 +580,46 @@ export default function StraddleStranglePage() {
               STRANGLE
             </button>
           </div>
+          {selectedExpiry && (
+            <>
+              <select
+                value={chartInterval}
+                onChange={(e) => setChartInterval(e.target.value as HistoricalInterval)}
+                className="bg-terminal-bg border border-terminal-border px-2 py-1 text-xs text-terminal-text h-7 rounded hover:border-terminal-accent transition-colors"
+              >
+                <option value="minute">1 Min</option>
+                <option value="3minute">3 Min</option>
+                <option value="5minute">5 Min</option>
+                <option value="15minute">15 Min</option>
+                <option value="30minute">30 Min</option>
+                <option value="60minute">1 Hour</option>
+                <option value="day">Day</option>
+              </select>
+              <div className="flex items-center gap-1 text-xs text-terminal-text/60">
+                <label htmlFor="from-date" className="whitespace-nowrap">From:</label>
+                <input
+                  id="from-date"
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  max={toDate}
+                  className="bg-terminal-bg border border-terminal-border px-2 py-1 text-xs text-terminal-text h-7 rounded hover:border-terminal-accent transition-colors"
+                />
+              </div>
+              <div className="flex items-center gap-1 text-xs text-terminal-text/60">
+                <label htmlFor="to-date" className="whitespace-nowrap">To:</label>
+                <input
+                  id="to-date"
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  min={fromDate}
+                  max={new Date().toISOString().split('T')[0]}
+                  className="bg-terminal-bg border border-terminal-border px-2 py-1 text-xs text-terminal-text h-7 rounded hover:border-terminal-accent transition-colors"
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -438,11 +675,61 @@ export default function StraddleStranglePage() {
         </div>
       )}
 
-      {/* Strategy Price Display */}
-      <div className="flex-1 overflow-auto p-4">
-        {strategyPrice ? (
-          <div className="max-w-4xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Strategy Price Display - Full Screen Chart with Sidebar */}
+      <div className="flex-1 overflow-hidden flex">
+        {/* Main Chart Area */}
+        <div className={`flex-1 flex flex-col transition-all duration-300 ${sidebarOpen ? 'mr-0' : ''}`}>
+          {strategyPrice ? (
+            <div className="h-full flex flex-col bg-terminal-border/20">
+              {/* Chart Header */}
+              <div className="flex items-center justify-between px-4 py-2 border-b border-terminal-border/50 bg-terminal-border/30">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-sm font-bold text-terminal-accent">
+                    {strategyType.toUpperCase()} PRICE CHART
+                  </h3>
+                  {isLoadingHistorical && (
+                    <span className="text-xs text-terminal-text/60">Loading historical data...</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  className="px-2 py-1 text-xs bg-terminal-border hover:bg-terminal-border/70 rounded transition-colors text-terminal-text"
+                >
+                  {sidebarOpen ? '◀ Hide Details' : '▶ Show Details'}
+                </button>
+              </div>
+              {/* Full Screen Chart */}
+              <div className="flex-1 p-2">
+                <StrategyPriceChart 
+                  data={priceHistory} 
+                  historicalData={historicalData}
+                  interval={chartInterval}
+                  breakevenPoints={breakevenPoints || undefined}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center text-terminal-text">
+              <p className="text-xs">
+                {!selectedUnderlying
+                  ? 'Select an underlying to view strategy prices'
+                  : !selectedExpiry
+                  ? 'Select an expiry date'
+                  : strategyType === 'straddle' && !strike
+                  ? 'Select a strike price'
+                  : strategyType === 'strangle' && (!callStrike || !putStrike)
+                  ? 'Select call and put strike prices'
+                  : 'Loading strategy data...'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar with Details */}
+        {strategyPrice && (
+          <div className={`${sidebarOpen ? 'w-80' : 'w-0'} overflow-hidden transition-all duration-300 border-l border-terminal-border/50 bg-terminal-border/20 flex flex-col`}>
+            <div className="h-full overflow-y-auto p-4 space-y-4">
+              <div className="space-y-4">
               {/* Price Summary */}
               <div className="bg-terminal-border/30 border border-terminal-border rounded p-4">
                 <h3 className="text-sm font-bold text-terminal-accent mb-3 border-b border-terminal-border pb-2">
@@ -473,6 +760,21 @@ export default function StraddleStranglePage() {
                     <span className="text-terminal-text/60">Ask Qty:</span>
                     <span className="text-terminal-text">{strategyPrice.askQty}</span>
                   </div>
+                  {breakevenPoints && (
+                    <>
+                      <div className="border-t border-terminal-border/50 mt-2 pt-2">
+                        <div className="text-terminal-text/60 text-[10px] mb-1">Breakeven Points:</div>
+                        <div className="flex justify-between">
+                          <span className="text-terminal-text/60 text-[10px]">Upper:</span>
+                          <span className="text-terminal-yellow text-[10px] font-semibold">{formatPrice(breakevenPoints.upper)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-terminal-text/60 text-[10px]">Lower:</span>
+                          <span className="text-terminal-yellow text-[10px] font-semibold">{formatPrice(breakevenPoints.lower)}</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -592,21 +894,8 @@ export default function StraddleStranglePage() {
                   </div>
                 </div>
               )}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="h-full flex items-center justify-center text-terminal-text">
-            <p className="text-xs">
-              {!selectedUnderlying
-                ? 'Select an underlying to view strategy prices'
-                : !selectedExpiry
-                ? 'Select an expiry date'
-                : strategyType === 'straddle' && !strike
-                ? 'Select a strike price'
-                : strategyType === 'strangle' && (!callStrike || !putStrike)
-                ? 'Select call and put strike prices'
-                : 'Loading strategy data...'}
-            </p>
           </div>
         )}
       </div>
