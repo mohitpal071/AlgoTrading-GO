@@ -7,8 +7,8 @@ import { useWatchlistStore } from '../store/watchlistStore';
 export function useWebSocket(url: string) {
   const [status, setStatus] = useState<WebSocketStatus>('disconnected');
   const wsServiceRef = useRef<WebSocketService | null>(null);
-  const { updateFromTick: updateOptionFromTick } = useOptionStore();
-  const { updateInstrumentFromTick } = useWatchlistStore();
+  const updateOptionFromTick = useOptionStore((state) => state.updateFromTick);
+  const updateInstrumentFromTick = useWatchlistStore((state) => state.updateInstrumentFromTick);
 
   // Create WebSocket service when URL changes
   useEffect(() => {
@@ -21,16 +21,41 @@ export function useWebSocket(url: string) {
     const wsService = new WebSocketService(url);
     wsServiceRef.current = wsService;
 
+    console.log('[useWebSocket] WebSocketService created, setting up callbacks...');
+    console.log('[useWebSocket] updateOptionFromTick available:', !!updateOptionFromTick);
+    console.log('[useWebSocket] updateInstrumentFromTick available:', !!updateInstrumentFromTick);
+
     // Set up callbacks - these closures will capture the latest store functions
     wsService.onTick((tick: Tick) => {
-      // Update both options and watchlist instruments
-      updateOptionFromTick(tick);
-      updateInstrumentFromTick(tick);
+      console.log(`[useWebSocket] onTick callback received for token ${tick.instrumentToken}`);
+      try {
+        // Update both options and watchlist instruments
+        console.log(`[useWebSocket] Calling updateOptionFromTick and updateInstrumentFromTick`);
+        if (updateOptionFromTick) {
+          updateOptionFromTick(tick);
+        } else {
+          console.warn('[useWebSocket] updateOptionFromTick is not available');
+        }
+        if (updateInstrumentFromTick) {
+          updateInstrumentFromTick(tick);
+        } else {
+          console.warn('[useWebSocket] updateInstrumentFromTick is not available');
+        }
+        console.log(`[useWebSocket] ✓ Successfully called update functions for token ${tick.instrumentToken}`);
+      } catch (error) {
+        console.error(`[useWebSocket] ✗ Error calling update functions:`, error);
+      }
     });
 
+    // Verify callback was set
+    console.log('[useWebSocket] Callback registration complete. Verifying...');
+    // Access private property for verification (we'll add a getter method)
+    
     wsService.onStatusChange((newStatus: WebSocketStatus) => {
       setStatus(newStatus);
     });
+    
+    console.log('[useWebSocket] ✓ All callbacks registered');
 
     return () => {
       if (wsServiceRef.current) {
@@ -38,8 +63,7 @@ export function useWebSocket(url: string) {
         wsServiceRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]); // Only depend on url - store functions are stable in Zustand
+  }, [url, updateOptionFromTick, updateInstrumentFromTick]); // Include store functions in dependencies
 
   const connect = useCallback(() => {
     wsServiceRef.current?.connect();

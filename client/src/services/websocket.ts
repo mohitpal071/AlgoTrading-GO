@@ -46,16 +46,25 @@ export class WebSocketService {
     
     try {
       this.ws = new WebSocket(this.url);
+      // Set binaryType to 'arraybuffer' to receive binary data as ArrayBuffer
+      // Reference implementation: this.ws.binaryType = "arraybuffer"
+      this.ws.binaryType = 'arraybuffer';
       
       this.ws.onopen = () => {
         console.log('WebSocket connected');
+        console.log('[WebSocketService] onTickCallback is set:', !!this.onTickCallback);
         this.setStatus('connected');
         this.reconnectAttempts = 0;
         this.manuallyDisconnected = false;
         
         // Resubscribe to tokens if we have any
-        if (this.subscribedTokens.length > 0) {
-          this.subscribe(this.subscribedTokens);
+        if (this.subscribedTokens.length > 0 && this.ws) {
+          console.log('Resubscribing to tokens on reconnect:', this.subscribedTokens);
+          // Send subscription message directly since we're already connected
+          this.ws.send(JSON.stringify({
+            a: 'subscribe',
+            v: this.subscribedTokens,
+          }));
         }
       };
 
@@ -88,19 +97,46 @@ export class WebSocketService {
     }
   }
 
-  private handleMessage(event: MessageEvent): void {
+  private async handleMessage(event: MessageEvent): Promise<void> {
+    
+    
+    let arrayBuffer: ArrayBuffer | null = null;
+    
+    // Handle binary data - could be ArrayBuffer or Blob
     if (event.data instanceof ArrayBuffer) {
-      // Handle binary tick data
-      this.parseBinaryTick(event.data);
-    } else if (typeof event.data === 'string') {
-      // Handle text messages (JSON)
-      try {
-        const message = JSON.parse(event.data);
-        console.log('Received message:', message);
-      } catch (error) {
-        console.error('Failed to parse message:', error);
+      arrayBuffer = event.data;
+    } else {
+      // Try to handle as string (text messages)
+      if (typeof event.data === 'string') {
+        try {
+          const message = JSON.parse(event.data);
+          console.log('Received text message:', message);
+          this.processTextMessage(message);
+        } catch (error) {
+          console.error('Failed to parse message:', error);
+        }
+      } else {
+        console.warn('Unknown data type:', typeof event.data, event.data);
       }
+      return;
     }
+    
+    // Handle binary tick data - only parse if we have enough data
+    // Reference implementation checks: e.data.byteLength > 2
+    if (arrayBuffer && arrayBuffer.byteLength > 2) {
+      console.debug('Received binary tick data, size:', arrayBuffer.byteLength);
+      this.parseBinaryTick(arrayBuffer);
+    } else if (arrayBuffer) {
+      console.warn('Binary data too small to parse:', arrayBuffer.byteLength);
+    }
+  }
+
+  private processTextMessage(message: any): void {
+    // Handle text-based WebSocket messages (errors, alerts, etc.)
+    if (message.type === 'error' || message.t === 'error') {
+      console.error('WebSocket error message:', message);
+    }
+    // Add other message type handlers as needed
   }
 
   private parseBinaryTick(data: ArrayBuffer): void {
@@ -109,62 +145,82 @@ export class WebSocketService {
     const view = new DataView(data);
     let offset = 0;
 
-    if (data.byteLength < 2) return;
+    if (data.byteLength < 2) {
+      console.warn('Binary data too short:', data.byteLength);
+      return;
+    }
 
     const packetCount = view.getUint16(offset, false); // Big-endian
     offset += 2;
+    
+    console.log(`Parsing ${packetCount} tick packet(s) from binary data (${data.byteLength} bytes)`);
 
     for (let i = 0; i < packetCount; i++) {
-      if (offset + 2 > data.byteLength) break;
+      if (offset + 2 > data.byteLength) {
+        console.warn(`Packet ${i + 1}: Not enough data for packet length`);
+        break;
+      }
 
       const packetLen = view.getUint16(offset, false);
       offset += 2;
 
-      if (offset + packetLen > data.byteLength) break;
+      if (offset + packetLen > data.byteLength) {
+        console.warn(`Packet ${i + 1}: Packet length ${packetLen} exceeds remaining data`);
+        break;
+      }
 
       const packetData = data.slice(offset, offset + packetLen);
+      console.debug(`Parsing packet ${i + 1}/${packetCount}, length: ${packetLen}`);
       this.parseTickPacket(packetData);
       offset += packetLen;
     }
   }
 
   /**
-   * Convert price from paise to rupees based on segment
+   * Get decimal divisor based on segment (matches reference implementation getDecimals)
    * Segment is determined from the last byte of instrument token
    */
-  private convertPrice(segment: number, val: number): number {
-    // NseCD = 3, BseCD = 5 use different conversion
+  private getDecimals(token: number): number {
+    const segment = token & 0xFF;
+    // Segment constants: NseCD = 3, BseCD = 5, NseCOM = 12, others = default
     if (segment === 3) {
-      return val / 10000000.0; // NseCD
-    } else if (segment === 5) {
-      return val / 10000.0; // BseCD
+      return 10000000; // NseCD
+    } else if (segment === 5 || segment === 12) {
+      return 10000; // BseCD or NseCOM
     } else {
-      return val / 100.0; // Default (stocks, indices, etc.)
+      return 100; // Default (stocks, indices, etc.)
     }
   }
 
+
   private parseTickPacket(packet: ArrayBuffer): void {
     // Parse individual tick packet according to Zerodha binary format
-    if (packet.byteLength < 8) return;
+    // Based on reference implementation from Kite Connect
+    if (packet.byteLength < 8) {
+      console.warn('Packet too short to parse:', packet.byteLength);
+      return;
+    }
 
     const view = new DataView(packet);
     const token = view.getUint32(0, false); // Big-endian
     const segment = token & 0xFF; // Last byte determines segment
+    const decimals = this.getDecimals(token); // Get price divisor based on segment
     const isIndex = segment === 9; // Indices segment = 9
-    const isTradable = !isIndex;
+    const isTradable = segment !== 9; // All segments except indices are tradable
 
-    // Determine mode based on packet length
+    // Determine mode based on packet length - matches backend constants
     const MODE_LTP_LENGTH = 8;
-    const MODE_QUOTE_INDEX_LENGTH = 28;
-    const MODE_FULL_INDEX_LENGTH = 32;
-    const MODE_QUOTE_LENGTH = 44;
-    const MODE_FULL_LENGTH = 184;
+    const MODE_QUOTE_INDEX_LENGTH = 28; // modeQuoteIndexPacketLength
+    const MODE_FULL_INDEX_LENGTH = 32;  // modeFullIndexLength
+    // const MODE_QUOTE_LENGTH = 44;     // modeQuoteLength (used implicitly in else clause)
+    const MODE_FULL_LENGTH = 184;       // modeFullLength
 
-    let tick: Tick;
+    let tick: Tick | undefined;
 
     // Mode LTP (8 bytes) - only last price
+    // Reference: if (8 === e.byteLength)
     if (packet.byteLength === MODE_LTP_LENGTH) {
-      const lastPrice = this.convertPrice(segment, view.getUint32(4, false));
+      const lastPrice = view.getUint32(4, false) / decimals;
       tick = {
         mode: 'ltp',
         instrumentToken: token,
@@ -186,17 +242,76 @@ export class WebSocketService {
         netChange: 0,
         ohlc: { open: 0, high: 0, low: 0, close: 0 },
         depth: { buy: [], sell: [] },
-        // Legacy fields
+        volume: 0,
+      };
+    }
+    // Mode LTPC (12 bytes) - LTP + Close price (reference: else if (12 === e.byteLength))
+    else if (packet.byteLength === 12) {
+      const lastPrice = view.getUint32(4, false) / decimals;
+      const closePrice = view.getUint32(8, false) / decimals;
+      const netChange = lastPrice - closePrice;
+      tick = {
+        mode: 'ltp',
+        instrumentToken: token,
+        isTradable,
+        isIndex,
+        timestamp: Math.floor(Date.now() / 1000),
+        lastTradeTime: 0,
+        lastPrice,
+        lastTradedQuantity: 0,
+        averageTradePrice: 0,
+        volumeTraded: 0,
+        totalBuyQuantity: 0,
+        totalSellQuantity: 0,
+        totalBuy: 0,
+        totalSell: 0,
+        oi: 0,
+        oiDayHigh: 0,
+        oiDayLow: 0,
+        netChange,
+        ohlc: { open: 0, high: 0, low: 0, close: closePrice },
+        depth: { buy: [], sell: [] },
+        volume: 0,
+      };
+    }
+    // Mode LTPCOI (16 bytes) - LTP + Close + OI (reference: else if (16 === e.byteLength))
+    else if (packet.byteLength === 16) {
+      const lastPrice = view.getUint32(4, false) / decimals;
+      const closePrice = view.getUint32(8, false) / decimals;
+      const oi = view.getUint32(12, false);
+      const netChange = lastPrice - closePrice;
+      tick = {
+        mode: 'ltp',
+        instrumentToken: token,
+        isTradable,
+        isIndex,
+        timestamp: Math.floor(Date.now() / 1000),
+        lastTradeTime: 0,
+        lastPrice,
+        lastTradedQuantity: 0,
+        averageTradePrice: 0,
+        volumeTraded: 0,
+        totalBuyQuantity: 0,
+        totalSellQuantity: 0,
+        totalBuy: 0,
+        totalSell: 0,
+        oi,
+        oiDayHigh: 0,
+        oiDayLow: 0,
+        netChange,
+        ohlc: { open: 0, high: 0, low: 0, close: closePrice },
+        depth: { buy: [], sell: [] },
         volume: 0,
       };
     }
     // Mode Quote Index (28 bytes) or Full Index (32 bytes)
+    // Reference: else if (28 === e.byteLength || 32 === e.byteLength)
     else if (packet.byteLength === MODE_QUOTE_INDEX_LENGTH || packet.byteLength === MODE_FULL_INDEX_LENGTH) {
-      const lastPrice = this.convertPrice(segment, view.getUint32(4, false));
-      const high = this.convertPrice(segment, view.getUint32(8, false));
-      const low = this.convertPrice(segment, view.getUint32(12, false));
-      const open = this.convertPrice(segment, view.getUint32(16, false));
-      const close = this.convertPrice(segment, view.getUint32(20, false));
+      const lastPrice = view.getUint32(4, false) / decimals;
+      const high = view.getUint32(8, false) / decimals;
+      const low = view.getUint32(12, false) / decimals;
+      const open = view.getUint32(16, false) / decimals;
+      const close = view.getUint32(20, false) / decimals;
       const netChange = lastPrice - close;
       
       tick = {
@@ -225,21 +340,25 @@ export class WebSocketService {
         volume: 0,
       };
     }
-    // Mode Quote (44 bytes) or Full (184 bytes) for stocks
+    // Mode Quote (44 bytes) or Full (164/184 bytes) for stocks
+    // Reference: else block handles 44, 164, 184 byte packets
     else {
-      const lastPrice = this.convertPrice(segment, view.getUint32(4, false));
+      // Read lastPrice and closePrice first
+      const lastPrice = view.getUint32(4, false) / decimals;
+      const closePrice = view.getUint32(40, false) / decimals;
+      
+      // Read other fields
       const lastTradedQuantity = view.getUint32(8, false);
-      const averageTradePrice = this.convertPrice(segment, view.getUint32(12, false));
+      const averageTradePrice = view.getUint32(12, false) / decimals;
       const volumeTraded = view.getUint32(16, false);
       const totalBuyQuantity = view.getUint32(20, false);
       const totalSellQuantity = view.getUint32(24, false);
-      const open = this.convertPrice(segment, view.getUint32(28, false));
-      const high = this.convertPrice(segment, view.getUint32(32, false));
-      const low = this.convertPrice(segment, view.getUint32(36, false));
-      const close = this.convertPrice(segment, view.getUint32(40, false));
-      const netChange = lastPrice - close;
+      const open = view.getUint32(28, false) / decimals;
+      const high = view.getUint32(32, false) / decimals;
+      const low = view.getUint32(36, false) / decimals;
 
-      // Initialize tick with quote mode data
+      // Initialize tick with quote mode data (matching backend line 711-728)
+      // Note: Backend doesn't set netChange for quote mode, but we calculate it for UI
       tick = {
         mode: 'quote',
         instrumentToken: token,
@@ -258,45 +377,51 @@ export class WebSocketService {
         oi: 0,
         oiDayHigh: 0,
         oiDayLow: 0,
-        netChange,
-        ohlc: { open, high, low, close },
+        netChange: lastPrice - closePrice, // Calculate for UI (backend sets this only in full mode)
+        ohlc: { open, high, low, close: closePrice },
         depth: { buy: [], sell: [] },
         volume: volumeTraded,
       };
 
-      // Parse full mode (184 bytes) - includes OI, depth, timestamps
-      if (packet.byteLength === MODE_FULL_LENGTH) {
+      // Parse full mode (164 or 184 bytes) - includes OI, depth, timestamps
+      // Reference: if (164 === e.byteLength || 184 === e.byteLength)
+      if (packet.byteLength === 164 || packet.byteLength === MODE_FULL_LENGTH) {
         tick.mode = 'full';
-        tick.lastTradeTime = view.getUint32(44, false);
-        tick.oi = view.getUint32(48, false);
-        tick.oiDayHigh = view.getUint32(52, false);
-        tick.oiDayLow = view.getUint32(56, false);
-        tick.timestamp = view.getUint32(60, false);
+        // Read full mode fields
+        // For 184 bytes: lastTradeTime at 44, for 164 bytes: depth starts at 44
+        const depthStartOffset = packet.byteLength === MODE_FULL_LENGTH ? 64 : 44;
+        
+        if (packet.byteLength === MODE_FULL_LENGTH) {
+          tick.lastTradeTime = view.getUint32(44, false);
+          tick.oi = view.getUint32(48, false);
+          tick.oiDayHigh = view.getUint32(52, false);
+          tick.oiDayLow = view.getUint32(56, false);
+          tick.timestamp = view.getUint32(60, false);
+        }
+        tick.netChange = lastPrice - closePrice;
 
         // Parse market depth (5 levels each for buy and sell)
-        // Buy depth starts at offset 64, Sell depth at 124
-        // Each level is 12 bytes: quantity(4), price(4), orders(2)
+        // Reference: depth parsing loop for 10 items (5 buy + 5 sell)
+        // Buy depth starts at depthStartOffset, Sell depth at depthStartOffset + 60
         const buyDepth: typeof tick.depth.buy = [];
         const sellDepth: typeof tick.depth.sell = [];
         
-        let buyPos = 64;
-        let sellPos = 124;
+        let buyPos = depthStartOffset;
+        let sellPos = depthStartOffset + 60; // 5 levels * 12 bytes = 60
         
-        for (let i = 0; i < 5; i++) {
-          // Buy depth
-          const buyQty = view.getUint32(buyPos, false);
-          const buyPrice = this.convertPrice(segment, view.getUint32(buyPos + 4, false));
-          const buyOrders = view.getUint16(buyPos + 8, false);
-          buyDepth.push({ price: buyPrice, quantity: buyQty, orders: buyOrders });
+        // Parse 10 depth levels (5 buy + 5 sell)
+        for (let i = 0; i < 10; i++) {
+          const pos = i < 5 ? buyPos + (i * 12) : sellPos + ((i - 5) * 12);
           
-          // Sell depth
-          const sellQty = view.getUint32(sellPos, false);
-          const sellPrice = this.convertPrice(segment, view.getUint32(sellPos + 4, false));
-          const sellOrders = view.getUint16(sellPos + 8, false);
-          sellDepth.push({ price: sellPrice, quantity: sellQty, orders: sellOrders });
+          const qty = view.getUint32(pos, false);
+          const price = view.getUint32(pos + 4, false) / decimals;
+          const orders = view.getUint16(pos + 8, false);
           
-          buyPos += 12;
-          sellPos += 12;
+          if (i < 5) {
+            buyDepth.push({ price, quantity: qty, orders });
+          } else {
+            sellDepth.push({ price, quantity: qty, orders });
+          }
         }
         
         tick.depth = { buy: buyDepth, sell: sellDepth };
@@ -313,9 +438,33 @@ export class WebSocketService {
       }
     }
 
-    if (this.onTickCallback && tick) {
-      this.onTickCallback(tick);
+    // Call onTick callback after parsing to update prices and other fields
+    // This will trigger updateInstrumentFromTick in the watchlist store
+    if (!tick) {
+      console.warn('Failed to parse tick packet, tick is undefined');
+      return;
     }
+
+    // Verify callback is set before trying to call it
+    if (!this.onTickCallback) {
+      console.error('✗ CRITICAL: onTickCallback is NOT set! Cannot update prices.');
+      console.error('✗ This means the callback was never registered or was cleared.');
+      return;
+    }
+
+    console.log(`✓ Parsed tick for token ${tick.instrumentToken}:`, {
+      lastPrice: tick.lastPrice,
+      volume: tick.volumeTraded || tick.volume,
+      mode: tick.mode,
+      netChange: tick.netChange,
+      hasDepth: tick.depth.buy.length > 0 || tick.depth.sell.length > 0,
+      ohlc: tick.ohlc,
+    });
+    
+  
+    this.onTickCallback(tick);
+    console.log('onTickCallback called', tick);
+  
   }
 
   subscribe(tokens: number[]): void {
@@ -323,10 +472,15 @@ export class WebSocketService {
     
     if (this.ws?.readyState === WebSocket.OPEN) {
       // Backend expects: { "a": "subscribe", "v": [tokens] }
-      this.ws.send(JSON.stringify({
+      const message = {
         a: 'subscribe',
         v: tokens,
-      }));
+      };
+      console.log('Subscribing to tokens:', tokens, 'Message:', message);
+      this.ws.send(JSON.stringify(message));
+    } else {
+      console.warn('WebSocket not open, cannot subscribe. State:', this.ws?.readyState);
+      // Store tokens for later subscription when connection is established
     }
   }
 
@@ -345,7 +499,16 @@ export class WebSocketService {
   }
 
   onTick(callback: (tick: Tick) => void): void {
+    if (!callback) {
+      console.error('[WebSocketService] ✗ Cannot set null/undefined callback!');
+      return;
+    }
     this.onTickCallback = callback;
+  }
+  
+  // Getter to verify callback is set (for debugging)
+  getOnTickCallback(): boolean {
+    return !!this.onTickCallback;
   }
 
   onStatusChange(callback: (status: WebSocketStatus) => void): void {

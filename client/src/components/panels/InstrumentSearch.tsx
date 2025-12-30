@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getInstruments, ParsedInstrument } from '../../services/api';
 import { useWatchlistStore } from '../../store/watchlistStore';
+import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import { Instrument } from '../../types/instrument';
 
 export default function InstrumentSearch() {
@@ -14,6 +15,7 @@ export default function InstrumentSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { addInstrument, addSymbolToGroup, selectedGroupId, getInstrument } = useWatchlistStore();
+  const { subscribe, status } = useWebSocketContext();
 
   // Load instruments on mount
   useEffect(() => {
@@ -100,6 +102,11 @@ export default function InstrumentSearch() {
       if (selectedGroupId) {
         addSymbolToGroup(selectedGroupId, inst.tradingsymbol);
       }
+      // Subscribe to instrument token if WebSocket is connected and token exists
+      if (status === 'connected' && inst.instrumentToken) {
+        subscribe([inst.instrumentToken]);
+        console.log(`Subscribed to existing instrument token: ${inst.instrumentToken} (${inst.tradingsymbol})`);
+      }
       setSearchQuery('');
       setShowResults(false);
       return;
@@ -129,10 +136,26 @@ export default function InstrumentSearch() {
 
     // Add to watchlist store
     addInstrument(newInstrument);
+    console.log(`Added instrument to watchlist:`, {
+      symbol: inst.tradingsymbol,
+      token: inst.instrumentToken,
+      name: inst.name,
+    });
 
     // Add to current group if one is selected
     if (selectedGroupId) {
       addSymbolToGroup(selectedGroupId, inst.tradingsymbol);
+    }
+
+    // Subscribe to instrument token via WebSocket if connected
+    if (status === 'connected' && inst.instrumentToken) {
+      console.log(`Subscribing to instrument token: ${inst.instrumentToken} (${inst.tradingsymbol}), WebSocket status: ${status}`);
+      subscribe([inst.instrumentToken]);
+    } else {
+      console.warn(`Cannot subscribe to ${inst.tradingsymbol}:`, {
+        status,
+        hasToken: !!inst.instrumentToken,
+      });
     }
 
     setSearchQuery('');

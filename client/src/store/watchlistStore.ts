@@ -143,21 +143,24 @@ function generateDefaultGroups(instruments: Instrument[]): Map<string, Watchlist
 }
 
 export const useWatchlistStore = create<WatchlistStore>((set, get) => {
-  // Initialize with dummy data
-  const dummyInstruments = generateDummyInstruments();
-  const instrumentsMap = new Map<string, Instrument>();
-  dummyInstruments.forEach(inst => {
-    instrumentsMap.set(inst.symbol, inst);
+  // Initialize with empty state - instruments will be added via search
+  const defaultGroups = new Map<string, WatchlistGroup>();
+  
+  // Create a default group for user to start with
+  const defaultGroupId = 'default';
+  defaultGroups.set(defaultGroupId, {
+    id: defaultGroupId,
+    name: 'My Watchlist',
+    symbols: [],
+    color: '#58a6ff',
   });
 
-  const defaultGroups = generateDefaultGroups(dummyInstruments);
-
   return {
-    instruments: instrumentsMap,
+    instruments: new Map<string, Instrument>(),
     tokenToSymbol: new Map<number, string>(),
-    favorites: new Set(['NIFTY', 'BANKNIFTY', 'RELIANCE']),
+    favorites: new Set<string>(),
     groups: defaultGroups,
-    selectedGroupId: 'indices', // Default to indices group
+    selectedGroupId: defaultGroupId,
 
     addInstrument: (instrument: Instrument) => {
       const { instruments, tokenToSymbol } = get();
@@ -168,12 +171,17 @@ export const useWatchlistStore = create<WatchlistStore>((set, get) => {
       const newTokenToSymbol = new Map(tokenToSymbol);
       if (instrument.instrumentToken) {
         newTokenToSymbol.set(instrument.instrumentToken, instrument.symbol);
+        console.log(`✓ Mapped token ${instrument.instrumentToken} -> symbol ${instrument.symbol}`);
+      } else {
+        console.warn(`✗ Instrument ${instrument.symbol} has no instrumentToken, cannot map for tick updates`);
       }
       
       set({
         instruments: newInstruments,
         tokenToSymbol: newTokenToSymbol,
       });
+      
+      console.log(`✓ Added instrument ${instrument.symbol} to watchlist. Total instruments: ${newInstruments.size}, Total token mappings: ${newTokenToSymbol.size}`);
     },
 
     updateInstrument: (symbol: string, updates: Partial<Instrument>) => {
@@ -206,15 +214,30 @@ export const useWatchlistStore = create<WatchlistStore>((set, get) => {
       const { instruments, tokenToSymbol } = get();
       const symbol = tokenToSymbol.get(tick.instrumentToken);
       
+      console.log(`[updateInstrumentFromTick] Token: ${tick.instrumentToken}, Symbol: ${symbol || 'NOT MAPPED'}`);
+      console.log(`[updateInstrumentFromTick] TokenToSymbol map size: ${tokenToSymbol.size}, Instruments size: ${instruments.size}`);
+      
       if (!symbol) {
         // Token not mapped to any symbol, skip update
+        // This is normal for instruments we haven't subscribed to yet
+        console.warn(`✗ Tick received for unmapped token: ${tick.instrumentToken}. Available tokens:`, Array.from(tokenToSymbol.keys()));
         return;
       }
       
       const existing = instruments.get(symbol);
       if (!existing) {
+        // Instrument not found in store, skip update
+        console.warn(`✗ Tick received but instrument not found: ${symbol}. Available symbols:`, Array.from(instruments.keys()));
         return;
       }
+      
+      console.log(`✓ Updating instrument ${symbol} with tick data:`, {
+        token: tick.instrumentToken,
+        lastPrice: tick.lastPrice,
+        previousPrice: existing.lastPrice,
+        volume: tick.volumeTraded || tick.volume,
+        change: tick.netChange,
+      });
       
       // Extract bid/ask from depth if available
       const bidPrice = tick.depth.buy.length > 0 ? tick.depth.buy[0].price : (tick.bidPrice || 0);
@@ -264,11 +287,20 @@ export const useWatchlistStore = create<WatchlistStore>((set, get) => {
         updates.low = tick.lastPrice;
       }
       
+      const updatedInstrument = {
+        ...existing,
+        ...updates,
+      };
+      
       set({
-        instruments: new Map(instruments).set(symbol, {
-          ...existing,
-          ...updates,
-        }),
+        instruments: new Map(instruments).set(symbol, updatedInstrument),
+      });
+      
+      console.log(`✓ Successfully updated instrument ${symbol}:`, {
+        oldPrice: existing.lastPrice,
+        newPrice: updatedInstrument.lastPrice,
+        change: updatedInstrument.change,
+        changePercent: updatedInstrument.changePercent,
       });
     },
 
