@@ -186,7 +186,7 @@ func (t *ExtendedTicker) readMessage(ctx context.Context, wg *sync.WaitGroup) {
 			switch mType {
 			case websocket.BinaryMessage:
 				t.triggerBinaryTick(msg)
-				fmt.Println("Binary Message Received: ", msg)
+				//fmt.Println("Binary Message Received: ", msg)
 				ticks, err := t.parseBinary(msg)
 				if err != nil {
 					t.triggerError(fmt.Errorf("Error parsing data received: %v", err))

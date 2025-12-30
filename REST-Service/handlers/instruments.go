@@ -67,6 +67,8 @@ func (ctrl *Controller) GetInstruments(c *gin.Context) {
 		"InstrumentType",
 		"TickSize",
 		"LotSize",
+		"StrikePrice",
+		"Expiry",
 	}
 
 	// Convert map to sorted slice for consistent ordering
@@ -96,6 +98,8 @@ func (ctrl *Controller) GetInstruments(c *gin.Context) {
 		row[5] = instrumentTypeEnum[string(inst.InstrumentType)] // Use enum ID instead of string
 		row[6] = inst.TickSize
 		row[7] = inst.LotSize
+		row[8] = inst.StrikePrice
+		row[9] = inst.Expiry.Format("2006-01-02") // Format expiry as YYYY-MM-DD
 
 		data = append(data, row)
 	}
