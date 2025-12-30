@@ -7,6 +7,7 @@ import WatchlistPage from './pages/WatchlistPage';
 import OptionChainPage from './pages/OptionChainPage';
 import PositionsPage from './pages/PositionsPage';
 import OrdersPage from './pages/OrdersPage';
+import StraddleStranglePage from './pages/StraddleStranglePage';
 import { buildZerodhaWebSocketUrl } from './utils/zerodhaWs';
 
 function App() {
@@ -45,6 +46,7 @@ function App() {
               <Route path="/" element={<Navigate to="/watchlist" replace />} />
               <Route path="/watchlist" element={<WatchlistPage />} />
               <Route path="/option-chain" element={<OptionChainPage />} />
+              <Route path="/straddle-strangle" element={<StraddleStranglePage />} />
               <Route path="/positions" element={<PositionsPage />} />
               <Route path="/orders" element={<OrdersPage />} />
             </Routes>

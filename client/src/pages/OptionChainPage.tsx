@@ -116,6 +116,16 @@ export default function OptionChainPage() {
     currentSubscribedTokensRef.current = optionTokens;
   }, [wsStatus, selectedUnderlying, selectedExpiry, allInstruments, subscribe, unsubscribe]);
 
+  // Cleanup: Unsubscribe when component unmounts
+  useEffect(() => {
+    return () => {
+      if (currentSubscribedTokensRef.current.length > 0 && wsStatus === 'connected') {
+        unsubscribe(currentSubscribedTokensRef.current);
+        currentSubscribedTokensRef.current = [];
+      }
+    };
+  }, [unsubscribe, wsStatus]);
+
   // Populate option store when underlying and expiry are selected
   useEffect(() => {
     if (!selectedUnderlying || !selectedExpiry || allInstruments.length === 0) return;
