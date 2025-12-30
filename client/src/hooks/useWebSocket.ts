@@ -27,10 +27,10 @@ export function useWebSocket(url: string) {
 
     // Set up callbacks - these closures will capture the latest store functions
     wsService.onTick((tick: Tick) => {
-      console.log(`[useWebSocket] onTick callback received for token ${tick.instrumentToken}`);
+      // console.log(`[useWebSocket] onTick callback received for token ${tick.instrumentToken}`);
       try {
         // Update both options and watchlist instruments
-        console.log(`[useWebSocket] Calling updateOptionFromTick and updateInstrumentFromTick`);
+        // console.log(`[useWebSocket] Calling updateOptionFromTick and updateInstrumentFromTick`);
         if (updateOptionFromTick) {
           updateOptionFromTick(tick);
         } else {
@@ -41,7 +41,7 @@ export function useWebSocket(url: string) {
         } else {
           console.warn('[useWebSocket] updateInstrumentFromTick is not available');
         }
-        console.log(`[useWebSocket] ✓ Successfully called update functions for token ${tick.instrumentToken}`);
+        //console.log(`[useWebSocket] ✓ Successfully called update functions for token ${tick.instrumentToken}`);
       } catch (error) {
         console.error(`[useWebSocket] ✗ Error calling update functions:`, error);
       }

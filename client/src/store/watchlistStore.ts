@@ -214,13 +214,13 @@ export const useWatchlistStore = create<WatchlistStore>((set, get) => {
       const { instruments, tokenToSymbol } = get();
       const symbol = tokenToSymbol.get(tick.instrumentToken);
       
-      console.log(`[updateInstrumentFromTick] Token: ${tick.instrumentToken}, Symbol: ${symbol || 'NOT MAPPED'}`);
-      console.log(`[updateInstrumentFromTick] TokenToSymbol map size: ${tokenToSymbol.size}, Instruments size: ${instruments.size}`);
+      //console.log(`[updateInstrumentFromTick] Token: ${tick.instrumentToken}, Symbol: ${symbol || 'NOT MAPPED'}`);
+      //console.log(`[updateInstrumentFromTick] TokenToSymbol map size: ${tokenToSymbol.size}, Instruments size: ${instruments.size}`);
       
       if (!symbol) {
         // Token not mapped to any symbol, skip update
         // This is normal for instruments we haven't subscribed to yet
-        console.warn(`✗ Tick received for unmapped token: ${tick.instrumentToken}. Available tokens:`, Array.from(tokenToSymbol.keys()));
+        //console.warn(`✗ Tick received for unmapped token: ${tick.instrumentToken}. Available tokens:`, Array.from(tokenToSymbol.keys()));
         return;
       }
       
@@ -231,13 +231,13 @@ export const useWatchlistStore = create<WatchlistStore>((set, get) => {
         return;
       }
       
-      console.log(`✓ Updating instrument ${symbol} with tick data:`, {
-        token: tick.instrumentToken,
-        lastPrice: tick.lastPrice,
-        previousPrice: existing.lastPrice,
-        volume: tick.volumeTraded || tick.volume,
-        change: tick.netChange,
-      });
+      // console.log(`✓ Updating instrument ${symbol} with tick data:`, {
+      //   token: tick.instrumentToken,
+      //   lastPrice: tick.lastPrice,
+      //   previousPrice: existing.lastPrice,
+      //   volume: tick.volumeTraded || tick.volume,
+      //   change: tick.netChange,
+      // });
       
       // Extract bid/ask from depth if available
       const bidPrice = tick.depth.buy.length > 0 ? tick.depth.buy[0].price : (tick.bidPrice || 0);
@@ -296,12 +296,12 @@ export const useWatchlistStore = create<WatchlistStore>((set, get) => {
         instruments: new Map(instruments).set(symbol, updatedInstrument),
       });
       
-      console.log(`✓ Successfully updated instrument ${symbol}:`, {
-        oldPrice: existing.lastPrice,
-        newPrice: updatedInstrument.lastPrice,
-        change: updatedInstrument.change,
-        changePercent: updatedInstrument.changePercent,
-      });
+      // console.log(`✓ Successfully updated instrument ${symbol}:`, {
+      //   oldPrice: existing.lastPrice,
+      //   newPrice: updatedInstrument.lastPrice,
+      //   change: updatedInstrument.change,
+      //   changePercent: updatedInstrument.changePercent,
+      // });
     },
 
     removeInstrument: (symbol: string) => {

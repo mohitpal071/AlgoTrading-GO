@@ -42,6 +42,62 @@ export interface ParsedInstrument {
   instrumentType: string;
   tickSize: number;
   lotSize: number;
+  strikePrice?: number;
+  expiry?: string;
+}
+
+// ----- Option Chain API -----
+
+export interface ServerOptionData {
+  InstrumentToken: number;
+  Tradingsymbol: string;
+  Type: string;
+  Strike: number;
+  Expiry: string;
+  LastPrice: number;
+  BidPrice: number;
+  AskPrice: number;
+  BidQty: number;
+  AskQty: number;
+  Volume: number;
+  OI: number;
+  LastUpdated: string;
+  IV: number;
+  Delta: number;
+  Gamma: number;
+  Theta: number;
+  Vega: number;
+  IntrinsicValue: number;
+  TimeValue: number;
+}
+
+export interface OptionChainStrikeResponse {
+  strike: number;
+  call?: ServerOptionData;
+  put?: ServerOptionData;
+}
+
+export interface OptionChainResponse {
+  underlying: string;
+  underlying_token: number;
+  underlying_price: number;
+  expiry: string;
+  strikes: OptionChainStrikeResponse[];
+}
+
+export async function getOptionChain(
+  underlying: string,
+  expiry?: string
+): Promise<OptionChainResponse> {
+  const params = new URLSearchParams({ underlying });
+  if (expiry) {
+    params.set('expiry', expiry);
+  }
+  const response = await fetch(`${API_BASE}/options/chain?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch option chain: ${response.statusText}`);
+  }
+  return response.json();
 }
 
 export async function getInstruments(): Promise<ParsedInstrument[]> {
@@ -78,6 +134,8 @@ export async function getInstruments(): Promise<ParsedInstrument[]> {
       instrumentType: instrumentTypeMap.get(row[5] as number) || '',
       tickSize: row[6] as number,
       lotSize: row[7] as number,
+      strikePrice: row[8] !== undefined && row[8] !== null ? (row[8] as number) : undefined,
+      expiry: row[9] !== undefined && row[9] !== null ? (row[9] as string) : undefined,
     });
   }
   

@@ -196,7 +196,6 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
           rowHeight={24}
           headerHeight={28}
           suppressRowClickSelection={false}
-          enableRangeSelection={true}
           pagination={false}
           suppressCellFocus={true}
           suppressHorizontalScroll={false}

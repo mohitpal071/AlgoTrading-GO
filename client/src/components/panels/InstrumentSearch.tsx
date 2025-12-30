@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { getInstruments, ParsedInstrument } from '../../services/api';
+import { ParsedInstrument } from '../../services/api';
 import { useWatchlistStore } from '../../store/watchlistStore';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
+import { useInstrumentStore } from '../../store/instrumentStore';
 import { Instrument } from '../../types/instrument';
 
 export default function InstrumentSearch() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [instruments, setInstruments] = useState<ParsedInstrument[]>([]);
   const [filteredInstruments, setFilteredInstruments] = useState<ParsedInstrument[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -16,22 +15,13 @@ export default function InstrumentSearch() {
 
   const { addInstrument, addSymbolToGroup, selectedGroupId, getInstrument } = useWatchlistStore();
   const { subscribe, status } = useWebSocketContext();
+  const { instruments, isLoading, fetchInstruments } = useInstrumentStore();
 
-  // Load instruments on mount
+  // Fetch instruments on mount if not already loaded
   useEffect(() => {
-    const loadInstruments = async () => {
-      setIsLoading(true);
-      try {
-        const data = await getInstruments();
-        setInstruments(data);
-      } catch (error) {
-        console.error('Failed to load instruments:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadInstruments();
-  }, []);
+    fetchInstruments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // fetchInstruments is stable from Zustand, no need to include in deps
 
   // Filter instruments based on search query
   useEffect(() => {

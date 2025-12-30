@@ -153,7 +153,7 @@ export class WebSocketService {
     const packetCount = view.getUint16(offset, false); // Big-endian
     offset += 2;
     
-    console.log(`Parsing ${packetCount} tick packet(s) from binary data (${data.byteLength} bytes)`);
+    //console.log(`Parsing ${packetCount} tick packet(s) from binary data (${data.byteLength} bytes)`);
 
     for (let i = 0; i < packetCount; i++) {
       if (offset + 2 > data.byteLength) {
@@ -452,18 +452,18 @@ export class WebSocketService {
       return;
     }
 
-    console.log(`✓ Parsed tick for token ${tick.instrumentToken}:`, {
-      lastPrice: tick.lastPrice,
-      volume: tick.volumeTraded || tick.volume,
-      mode: tick.mode,
-      netChange: tick.netChange,
-      hasDepth: tick.depth.buy.length > 0 || tick.depth.sell.length > 0,
-      ohlc: tick.ohlc,
-    });
+    // console.log(`✓ Parsed tick for token ${tick.instrumentToken}:`, {
+    //   lastPrice: tick.lastPrice,
+    //   volume: tick.volumeTraded || tick.volume,
+    //   mode: tick.mode,
+    //   netChange: tick.netChange,
+    //   hasDepth: tick.depth.buy.length > 0 || tick.depth.sell.length > 0,
+    //   ohlc: tick.ohlc,
+    // });
     
   
     this.onTickCallback(tick);
-    console.log('onTickCallback called', tick);
+    // console.log('onTickCallback called', tick);
   
   }
 

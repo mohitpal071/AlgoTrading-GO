@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import GridLayout, { Layout } from 'react-grid-layout';
 import { useLayoutStore, PanelId } from '../../store/layoutStore';
 import WatchlistPanel from '../panels/WatchlistPanel';
@@ -6,6 +6,11 @@ import OptionChainTable from '../tables/OptionChainTable';
 import PositionsPanel from '../panels/PositionsPanel';
 import OrdersPanel from '../panels/OrdersPanel';
 import { useOptionStore } from '../../store/optionStore';
+import { useInstrumentStore } from '../../store/instrumentStore';
+import { useWebSocketContext } from '../../contexts/WebSocketContext';
+import OptionChainSearch from '../panels/OptionChainSearch';
+import { ParsedInstrument } from '../../services/api';
+import { OptionData } from '../../types/option';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
@@ -18,6 +23,7 @@ interface PanelContentProps {
   onRowClick: (token: number) => void;
   onExpiryChange: (expiry: string) => void;
   expiries: string[];
+  onUnderlyingChange: (underlying: string) => void;
 }
 
 function PanelContent({
@@ -27,8 +33,9 @@ function PanelContent({
   selectedExpiry,
   chainData,
   onRowClick,
-  onExpiryChange,
-  expiries,
+                onExpiryChange,
+                expiries: availableExpiries,
+                onUnderlyingChange,
 }: PanelContentProps) {
   switch (panelId) {
     case 'watchlist':
@@ -36,34 +43,55 @@ function PanelContent({
     case 'optionChain':
       return (
         <div className="h-full flex flex-col">
-          <div className="flex items-center justify-between px-3 py-1.5 border-b border-terminal-border/50 bg-terminal-border/30">
-            {selectedUnderlying && (
-              <div className="flex items-center gap-3 text-xs">
-                <span className="font-bold text-terminal-accent">{selectedUnderlying}</span>
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-terminal-border/50 bg-terminal-border/30 gap-3">
+          <div className="flex items-center gap-3 text-xs min-w-0">
+            {selectedUnderlying ? (
+              <>
+                <span className="font-bold text-terminal-accent truncate max-w-[160px]">
+                  {selectedUnderlying}
+                </span>
                 {selectedExpiry && (
                   <>
                     <span className="text-terminal-text opacity-50">|</span>
                     <span className="text-terminal-text">
-                      {new Date(selectedExpiry).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {new Date(selectedExpiry).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                      })}
                     </span>
                   </>
                 )}
-              </div>
+              </>
+            ) : (
+              <span className="text-terminal-text/60 text-[11px]">
+                Select an EQ underlying to view option chain
+              </span>
             )}
-            {expiries.length > 0 && (
+          </div>
+          <div className="flex items-center gap-2">
+            <OptionChainSearch
+              onSelectUnderlying={({ name }) => {
+                onUnderlyingChange(name);
+              }}
+            />
+            {availableExpiries.length > 0 && (
               <select
                 value={selectedExpiry || ''}
                 onChange={(e) => onExpiryChange(e.target.value)}
                 className="bg-terminal-bg border border-terminal-border px-2 py-0.5 text-xs text-terminal-text h-6 rounded hover:border-terminal-accent transition-colors"
               >
-                {expiries.map((expiry) => (
+                {availableExpiries.map((expiry: string) => (
                   <option key={expiry} value={expiry}>
-                    {new Date(expiry).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    {new Date(expiry).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
                   </option>
                 ))}
               </select>
             )}
           </div>
+        </div>
           <div className="flex-1 overflow-hidden">
             {chainData.length > 0 ? (
               <OptionChainTable
@@ -76,8 +104,8 @@ function PanelContent({
                 <p className="text-xs">No option chain data available</p>
               </div>
             )}
-          </div>
         </div>
+      </div>
       );
     case 'positions':
       return <PositionsPanel />;
@@ -156,11 +184,16 @@ export default function DraggableLayout() {
     setAvailableHeight,
   } = useLayoutStore();
 
-  const { chains, getChain } = useOptionStore();
+  const { chains, getChain, setOptionData } = useOptionStore();
+  const { instruments: allInstruments } = useInstrumentStore();
+  const { subscribe, status: wsStatus } = useWebSocketContext();
   const [selectedUnderlying, setSelectedUnderlying] = useState<string | null>(null);
   const [selectedExpiry, setSelectedExpiry] = useState<string | null>(null);
+  const [availableExpiries, setAvailableExpiries] = useState<string[]>([]);
   const [selectedToken, setSelectedToken] = useState<number | undefined>();
+  const [selectedUnderlyingToken, setSelectedUnderlyingToken] = useState<number | undefined>();
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const subscribedTokensRef = useRef<Set<number>>(new Set());
 
   const underlyings = Array.from(chains.keys());
 
@@ -183,19 +216,187 @@ export default function DraggableLayout() {
     }
   }, [underlyings, selectedUnderlying]);
 
-  const expiries = selectedUnderlying
-    ? Array.from(chains.get(selectedUnderlying)?.keys() || [])
-    : [];
-
   useEffect(() => {
-    if (expiries.length > 0 && !selectedExpiry) {
-      setSelectedExpiry(expiries[0]);
+    if (availableExpiries.length > 0 && !selectedExpiry) {
+      setSelectedExpiry(availableExpiries[0]);
     }
-  }, [expiries, selectedExpiry]);
+  }, [availableExpiries, selectedExpiry]);
+
 
   const chainData = selectedUnderlying && selectedExpiry
     ? getChain(selectedUnderlying, selectedExpiry)
     : [];
+
+  // When an EQ underlying is selected, find available expiries and set the first expiry
+  useEffect(() => {
+    if (!selectedUnderlying || allInstruments.length === 0) return;
+
+    // Filter for options where name matches the selected underlying, exchange is NFO, and type is CE or PE
+    const optionInstruments = allInstruments.filter(
+      (inst) =>
+        (inst.instrumentType === 'CE' || inst.instrumentType === 'PE') &&
+        inst.exchange === 'NFO' &&
+        inst.name === selectedUnderlying &&
+        inst.strikePrice !== undefined &&
+        inst.expiry !== undefined
+    );
+
+    if (optionInstruments.length === 0) {
+      console.log(`[DraggableLayout] No options found for ${selectedUnderlying}`);
+      return;
+    }
+
+    console.log(`[DraggableLayout] Found ${optionInstruments.length} options for ${selectedUnderlying}`);
+
+    // Group by expiry to find available expiries
+    const expirySet = new Set<string>();
+    optionInstruments.forEach((inst) => {
+      if (inst.expiry) {
+        expirySet.add(inst.expiry);
+      }
+    });
+
+    const availableExpiriesList = Array.from(expirySet).sort();
+    
+    // Store available expiries in state for the dropdown
+    setAvailableExpiries(availableExpiriesList);
+    
+    // Only set expiry if none is selected and we have expiries
+    if (!selectedExpiry && availableExpiriesList.length > 0) {
+      setSelectedExpiry(availableExpiriesList[0]);
+    }
+  }, [selectedUnderlying, allInstruments, selectedExpiry]);
+
+  // Subscribe to all options for the selected underlying when WebSocket is connected
+  useEffect(() => {
+    if (wsStatus !== 'connected' || !selectedUnderlying || allInstruments.length === 0) return;
+
+    // Filter for options where name matches the selected underlying, exchange is NFO
+    const optionInstruments = allInstruments.filter(
+      (inst) =>
+        (inst.instrumentType === 'CE' || inst.instrumentType === 'PE') &&
+        inst.exchange === 'NFO' &&
+        inst.name === selectedUnderlying &&
+        inst.strikePrice !== undefined &&
+        inst.expiry !== undefined
+    );
+
+    if (optionInstruments.length === 0) return;
+
+    // Collect all option tokens for WebSocket subscription
+    const optionTokens = optionInstruments
+      .map((inst) => inst.instrumentToken)
+      .filter((token): token is number => token !== undefined && token !== null);
+
+    if (optionTokens.length === 0) return;
+
+    // Check if we've already subscribed to these tokens to avoid duplicate subscriptions
+    const tokensToSubscribe = optionTokens.filter(token => !subscribedTokensRef.current.has(token));
+    
+    if (tokensToSubscribe.length > 0) {
+      console.log(`[DraggableLayout] Subscribing to ${tokensToSubscribe.length} option tokens for ${selectedUnderlying}`);
+      subscribe(tokensToSubscribe);
+      // Track subscribed tokens
+      tokensToSubscribe.forEach(token => subscribedTokensRef.current.add(token));
+    } else {
+      console.log(`[DraggableLayout] Already subscribed to all ${optionTokens.length} option tokens for ${selectedUnderlying}`);
+    }
+  }, [wsStatus, selectedUnderlying, allInstruments, subscribe]);
+
+  // When both underlying and expiry are selected, populate the option store
+  useEffect(() => {
+    if (!selectedUnderlying || !selectedExpiry || allInstruments.length === 0) return;
+
+    // Filter for options where name matches the selected underlying, exchange is NFO, and expiry matches
+    const optionInstruments = allInstruments.filter(
+      (inst) =>
+        (inst.instrumentType === 'CE' || inst.instrumentType === 'PE') &&
+        inst.exchange === 'NFO' &&
+        inst.name === selectedUnderlying &&
+        inst.expiry === selectedExpiry &&
+        inst.strikePrice !== undefined
+    );
+
+    if (optionInstruments.length === 0) {
+      console.log(`[DraggableLayout] No options found for ${selectedUnderlying} expiry ${selectedExpiry}`);
+      return;
+    }
+
+    // Group by strike
+    const optionsByStrike = new Map<number, { call?: ParsedInstrument; put?: ParsedInstrument }>();
+    
+    optionInstruments.forEach((inst) => {
+      const strike = inst.strikePrice!;
+      if (!optionsByStrike.has(strike)) {
+        optionsByStrike.set(strike, {});
+      }
+      const strikeData = optionsByStrike.get(strike)!;
+      if (inst.instrumentType === 'CE') {
+        strikeData.call = inst;
+      } else if (inst.instrumentType === 'PE') {
+        strikeData.put = inst;
+      }
+    });
+
+    // Create OptionData and populate store
+    optionsByStrike.forEach((strikeData, strike) => {
+        if (strikeData.call) {
+          const ce: OptionData = {
+            instrumentToken: strikeData.call.instrumentToken,
+            tradingSymbol: strikeData.call.tradingsymbol,
+            type: 'CE',
+            strike,
+            expiry: selectedExpiry,
+            lastPrice: 0,
+            bidPrice: 0,
+            askPrice: 0,
+            bidQty: 0,
+            askQty: 0,
+            volume: 0,
+            oi: 0,
+            lastUpdated: Date.now(),
+            iv: 0,
+            delta: 0,
+            gamma: 0,
+            theta: 0,
+            vega: 0,
+            intrinsicValue: 0,
+            timeValue: 0,
+            underlying: selectedUnderlying,
+            underlyingPrice: 0,
+          };
+          setOptionData(ce.instrumentToken, ce);
+        }
+
+        if (strikeData.put) {
+          const pe: OptionData = {
+            instrumentToken: strikeData.put.instrumentToken,
+            tradingSymbol: strikeData.put.tradingsymbol,
+            type: 'PE',
+            strike,
+            expiry: selectedExpiry,
+            lastPrice: 0,
+            bidPrice: 0,
+            askPrice: 0,
+            bidQty: 0,
+            askQty: 0,
+            volume: 0,
+            oi: 0,
+            lastUpdated: Date.now(),
+            iv: 0,
+            delta: 0,
+            gamma: 0,
+            theta: 0,
+            vega: 0,
+            intrinsicValue: 0,
+            timeValue: 0,
+            underlying: selectedUnderlying,
+            underlyingPrice: 0,
+          };
+          setOptionData(pe.instrumentToken, pe);
+        }
+    });
+  }, [selectedUnderlying, selectedExpiry, allInstruments, setOptionData]);
 
   const visiblePanels = useMemo(() => {
     if (maximizedPanel) {
@@ -256,7 +457,13 @@ export default function DraggableLayout() {
                 chainData={chainData}
                 onRowClick={(token) => setSelectedToken(token)}
                 onExpiryChange={(expiry) => setSelectedExpiry(expiry)}
-                expiries={expiries}
+                expiries={availableExpiries}
+                onUnderlyingChange={(underlying) => {
+                  setSelectedUnderlying(underlying);
+                  setSelectedUnderlyingToken(undefined);
+                  setSelectedExpiry(null);
+                  setAvailableExpiries([]); // Clear expiries when underlying changes
+                }}
               />
             </PanelWrapper>
           </div>
