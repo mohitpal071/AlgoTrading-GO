@@ -19,25 +19,27 @@ var upgrader = websocket.Upgrader{
 }
 
 type ClientManager struct {
-	clientList     map[*Client]bool
-	broadcast      chan []byte
-	register       chan *Client
-	unregister     chan *Client
-	subscribeToken chan []uint32
-	tokenMap       map[uint32]bool
-	ticker         *kiteticker.ExtendedTicker // Dependency
+	clientList       map[*Client]bool
+	broadcast        chan []byte
+	register         chan *Client
+	unregister       chan *Client
+	subscribeToken   chan []uint32
+	unsubscribeToken chan []uint32
+	tokenMap         map[uint32]bool
+	ticker           *kiteticker.ExtendedTicker // Dependency
 }
 
 // NewClientManager creates a new instance and injects the ticker dependency
 func NewClientManager(t *kiteticker.ExtendedTicker) *ClientManager {
 	return &ClientManager{
-		clientList:     make(map[*Client]bool),
-		broadcast:      make(chan []byte),
-		register:       make(chan *Client),
-		unregister:     make(chan *Client),
-		subscribeToken: make(chan []uint32),
-		tokenMap:       make(map[uint32]bool),
-		ticker:         t,
+		clientList:       make(map[*Client]bool),
+		broadcast:        make(chan []byte),
+		register:         make(chan *Client),
+		unregister:       make(chan *Client),
+		subscribeToken:   make(chan []uint32),
+		unsubscribeToken: make(chan []uint32),
+		tokenMap:         make(map[uint32]bool),
+		ticker:           t,
 	}
 }
 
@@ -59,11 +61,11 @@ func (m *ClientManager) Start() {
 		case msg := <-m.broadcast:
 			for c := range m.clientList {
 				// if len(msg) == 1 {
-					if err := c.conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
-						log.Printf("Write error: %v", err)
-						c.conn.Close()
-						m.unregister <- c
-					}
+				if err := c.conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
+					log.Printf("Write error: %v", err)
+					c.conn.Close()
+					m.unregister <- c
+				}
 				// } else {
 				// 	if err := c.conn.WriteMessage(websocket.BinaryMessage, c.filterBinaryMsg(msg)); err != nil {
 				// 		log.Printf("Write error: %v", err)
@@ -80,9 +82,9 @@ func (m *ClientManager) Start() {
 
 				_tokenList := []uint32{}
 				for _, token := range tokenList {
-					if _, ok := m.tokenMap[token]; !ok {
+					// if _, ok := m.tokenMap[token]; !ok {
 						_tokenList = append(_tokenList, token)
-					}
+					// }
 				}
 				if err := m.ticker.Subscribe(_tokenList); err == nil {
 					err = m.ticker.SetFullMode(_tokenList)
@@ -98,8 +100,24 @@ func (m *ClientManager) Start() {
 					log.Println("Err : ", err)
 				}
 			}
+		case tokenList := <-m.unsubscribeToken:
+			if len(tokenList) > 0 {
+				_tokenList := []uint32{}
+				for _, token := range tokenList {
+					if _, ok := m.tokenMap[token]; ok {
+						_tokenList = append(_tokenList, token)
+					}
+				}
+
+				if err := m.ticker.Unsubscribe(_tokenList); err == nil {
+					log.Println("Successfully Unsubscribed !!")
+				} else {
+					log.Println("Err : ", err)
+				}
+			}
 
 		}
+
 	}
 }
 
@@ -158,7 +176,7 @@ func (m *ClientManager) HandleNewConnection(w http.ResponseWriter, r *http.Reque
 				delete(client.tokenMap, token)
 			}
 			client.mu.Unlock()
-
+			m.unsubscribeToken <- data.Val
 		default:
 			log.Println("Invalid request type")
 		}
