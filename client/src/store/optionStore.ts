@@ -22,7 +22,7 @@ export const useOptionStore = create<OptionStore>((set, get) => ({
   chains: new Map(),
 
   updateFromTick: (tick: Tick) => {
-    const { options } = get();
+    const { options, chains } = get();
     const existing = options.get(tick.instrumentToken);
     
     if (existing) {
@@ -41,11 +41,37 @@ export const useOptionStore = create<OptionStore>((set, get) => ({
         askQty,
         volume: tick.volumeTraded || tick.volume || 0,
         oi: tick.oi,
-        lastUpdated: tick.timestamp,
+        lastUpdated: tick.timestamp * 1000, // Convert to milliseconds
       };
       
+      // Update the options map
+      const newOptions = new Map(options);
+      newOptions.set(tick.instrumentToken, updated);
+      
+      // Also update the chain structure so the table reflects the changes
+      const newChains = new Map(chains);
+      
+      if (newChains.has(updated.underlying)) {
+        const underlyingChains = newChains.get(updated.underlying)!;
+        if (underlyingChains.has(updated.expiry)) {
+          const chainRows = underlyingChains.get(updated.expiry)!;
+          const strikeIndex = chainRows.findIndex(row => row.strike === updated.strike);
+          
+          if (strikeIndex >= 0) {
+            const row = chainRows[strikeIndex];
+            if (updated.type === 'CE') {
+              row.call = updated;
+            } else {
+              row.put = updated;
+            }
+            chainRows[strikeIndex] = row;
+          }
+        }
+      }
+      
       set({
-        options: new Map(options).set(tick.instrumentToken, updated),
+        options: newOptions,
+        chains: newChains,
       });
     }
   },

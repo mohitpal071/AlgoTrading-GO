@@ -186,16 +186,25 @@ export default function DraggableLayout() {
 
   const { chains, getChain, setOptionData } = useOptionStore();
   const { instruments: allInstruments } = useInstrumentStore();
-  const { subscribe, status: wsStatus } = useWebSocketContext();
+  const { subscribe, unsubscribe, status: wsStatus } = useWebSocketContext();
   const [selectedUnderlying, setSelectedUnderlying] = useState<string | null>(null);
   const [selectedExpiry, setSelectedExpiry] = useState<string | null>(null);
   const [availableExpiries, setAvailableExpiries] = useState<string[]>([]);
   const [selectedToken, setSelectedToken] = useState<number | undefined>();
   const [selectedUnderlyingToken, setSelectedUnderlyingToken] = useState<number | undefined>();
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-  const subscribedTokensRef = useRef<Set<number>>(new Set());
+  const currentSubscribedTokensRef = useRef<number[]>([]);
 
   const underlyings = Array.from(chains.keys());
+
+  // Helper function to get the search name for options
+  // Special case: "NIFTY 50" should search for "NIFTY" in options
+  const getOptionSearchName = (underlying: string): string => {
+    if (underlying === 'NIFTY 50') {
+      return 'NIFTY';
+    }
+    return underlying;
+  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -231,12 +240,15 @@ export default function DraggableLayout() {
   useEffect(() => {
     if (!selectedUnderlying || allInstruments.length === 0) return;
 
-    // Filter for options where name matches the selected underlying, exchange is NFO, and type is CE or PE
+    // Get the search name for options (special case for NIFTY 50)
+    const optionSearchName = getOptionSearchName(selectedUnderlying);
+
+    // Filter for options where name matches the search name, exchange is NFO, and type is CE or PE
     const optionInstruments = allInstruments.filter(
       (inst) =>
         (inst.instrumentType === 'CE' || inst.instrumentType === 'PE') &&
         inst.exchange === 'NFO' &&
-        inst.name === selectedUnderlying &&
+        inst.name === optionSearchName &&
         inst.strikePrice !== undefined &&
         inst.expiry !== undefined
     );
@@ -267,52 +279,67 @@ export default function DraggableLayout() {
     }
   }, [selectedUnderlying, allInstruments, selectedExpiry]);
 
-  // Subscribe to all options for the selected underlying when WebSocket is connected
+  // Subscribe to options for the selected expiry only, unsubscribe from previous expiry
   useEffect(() => {
-    if (wsStatus !== 'connected' || !selectedUnderlying || allInstruments.length === 0) return;
+    if (wsStatus !== 'connected' || !selectedUnderlying || !selectedExpiry || allInstruments.length === 0) {
+      return;
+    }
 
-    // Filter for options where name matches the selected underlying, exchange is NFO
+    // Get the search name for options (special case for NIFTY 50)
+    const optionSearchName = getOptionSearchName(selectedUnderlying);
+
+    // Filter for options where name matches the search name, exchange is NFO, and expiry matches
     const optionInstruments = allInstruments.filter(
       (inst) =>
         (inst.instrumentType === 'CE' || inst.instrumentType === 'PE') &&
         inst.exchange === 'NFO' &&
-        inst.name === selectedUnderlying &&
-        inst.strikePrice !== undefined &&
-        inst.expiry !== undefined
+        inst.name === optionSearchName &&
+        inst.expiry === selectedExpiry &&
+        inst.strikePrice !== undefined
     );
 
-    if (optionInstruments.length === 0) return;
+    if (optionInstruments.length === 0) {
+      // Unsubscribe from previous tokens if no options found for this expiry
+      if (currentSubscribedTokensRef.current.length > 0) {
+        console.log(`[DraggableLayout] Unsubscribing from ${currentSubscribedTokensRef.current.length} previous option tokens`);
+        unsubscribe(currentSubscribedTokensRef.current);
+        currentSubscribedTokensRef.current = [];
+      }
+      return;
+    }
 
-    // Collect all option tokens for WebSocket subscription
+    // Collect option tokens for the selected expiry
     const optionTokens = optionInstruments
       .map((inst) => inst.instrumentToken)
       .filter((token): token is number => token !== undefined && token !== null);
 
     if (optionTokens.length === 0) return;
 
-    // Check if we've already subscribed to these tokens to avoid duplicate subscriptions
-    const tokensToSubscribe = optionTokens.filter(token => !subscribedTokensRef.current.has(token));
-    
-    if (tokensToSubscribe.length > 0) {
-      console.log(`[DraggableLayout] Subscribing to ${tokensToSubscribe.length} option tokens for ${selectedUnderlying}`);
-      subscribe(tokensToSubscribe);
-      // Track subscribed tokens
-      tokensToSubscribe.forEach(token => subscribedTokensRef.current.add(token));
-    } else {
-      console.log(`[DraggableLayout] Already subscribed to all ${optionTokens.length} option tokens for ${selectedUnderlying}`);
+    // Unsubscribe from previous expiry's tokens if they exist
+    if (currentSubscribedTokensRef.current.length > 0) {
+      console.log(`[DraggableLayout] Unsubscribing from ${currentSubscribedTokensRef.current.length} previous expiry option tokens`);
+      unsubscribe(currentSubscribedTokensRef.current);
     }
-  }, [wsStatus, selectedUnderlying, allInstruments, subscribe]);
+
+    // Subscribe to new expiry's tokens
+    console.log(`[DraggableLayout] Subscribing to ${optionTokens.length} option tokens for ${selectedUnderlying} expiry ${selectedExpiry}`);
+    subscribe(optionTokens);
+    currentSubscribedTokensRef.current = optionTokens;
+  }, [wsStatus, selectedUnderlying, selectedExpiry, allInstruments, subscribe, unsubscribe]);
 
   // When both underlying and expiry are selected, populate the option store
   useEffect(() => {
     if (!selectedUnderlying || !selectedExpiry || allInstruments.length === 0) return;
 
-    // Filter for options where name matches the selected underlying, exchange is NFO, and expiry matches
+    // Get the search name for options (special case for NIFTY 50)
+    const optionSearchName = getOptionSearchName(selectedUnderlying);
+
+    // Filter for options where name matches the search name, exchange is NFO, and expiry matches
     const optionInstruments = allInstruments.filter(
       (inst) =>
         (inst.instrumentType === 'CE' || inst.instrumentType === 'PE') &&
         inst.exchange === 'NFO' &&
-        inst.name === selectedUnderlying &&
+        inst.name === optionSearchName &&
         inst.expiry === selectedExpiry &&
         inst.strikePrice !== undefined
     );
@@ -459,6 +486,12 @@ export default function DraggableLayout() {
                 onExpiryChange={(expiry) => setSelectedExpiry(expiry)}
                 expiries={availableExpiries}
                 onUnderlyingChange={(underlying) => {
+                  // Unsubscribe from current tokens when underlying changes
+                  if (currentSubscribedTokensRef.current.length > 0 && wsStatus === 'connected') {
+                    console.log(`[DraggableLayout] Unsubscribing from ${currentSubscribedTokensRef.current.length} tokens due to underlying change`);
+                    unsubscribe(currentSubscribedTokensRef.current);
+                    currentSubscribedTokensRef.current = [];
+                  }
                   setSelectedUnderlying(underlying);
                   setSelectedUnderlyingToken(undefined);
                   setSelectedExpiry(null);
