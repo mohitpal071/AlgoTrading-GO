@@ -193,9 +193,9 @@ func (s *Scanner) ScanInstruments() error {
 		}
 	}
 
-	var IST, _ = time.LoadLocation("Asia/Kolkata")
-	fmt.Println(normalize(time.Date(2025, 12, 30, 0, 0, 0, 0, IST)))
-	fmt.Println(s.chains["NIFTY"][normalize(time.Date(2025, 12, 30, 0, 0, 0, 0, IST))].Strikes[26000].Call.Tradingsymbol) // 2025-12-30 00:00:00 +0530 IST
+	// var IST, _ = time.LoadLocation("Asia/Kolkata")
+	// fmt.Println(normalize(time.Date(2025, 12, 30, 0, 0, 0, 0, IST)))
+	// fmt.Println(s.chains["NIFTY"][normalize(time.Date(2025, 12, 30, 0, 0, 0, 0, IST))].Strikes[26000].Call.Tradingsymbol) // 2025-12-30 00:00:00 +0530 IST
 
 	log.Printf("Found %d option instruments", optionCount)
 	log.Printf("Built option chains for %d underlyings", len(s.chains))
