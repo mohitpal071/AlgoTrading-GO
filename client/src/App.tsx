@@ -8,6 +8,7 @@ import OptionChainPage from './pages/OptionChainPage';
 import PositionsPage from './pages/PositionsPage';
 import OrdersPage from './pages/OrdersPage';
 import StraddleStranglePage from './pages/StraddleStranglePage';
+import ArbitragePage from './pages/ArbitragePage';
 import { buildZerodhaWebSocketUrl } from './utils/zerodhaWs';
 
 function App() {
@@ -47,6 +48,7 @@ function App() {
               <Route path="/watchlist" element={<WatchlistPage />} />
               <Route path="/option-chain" element={<OptionChainPage />} />
               <Route path="/straddle-strangle" element={<StraddleStranglePage />} />
+              <Route path="/arbitrage" element={<ArbitragePage />} />
               <Route path="/positions" element={<PositionsPage />} />
               <Route path="/orders" element={<OrdersPage />} />
             </Routes>

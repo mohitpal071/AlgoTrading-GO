@@ -160,6 +160,7 @@ export interface HistoricalCandle {
   high: number;
   low: number;
   close: number;
+  
   volume: number;
   oi?: number; // Open Interest (optional)
 }

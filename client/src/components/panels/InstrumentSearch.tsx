@@ -14,7 +14,6 @@ export default function InstrumentSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { addInstrument, addSymbolToGroup, selectedGroupId, getInstrument } = useWatchlistStore();
-  const { subscribe, status } = useWebSocketContext();
   const { instruments, isLoading, fetchInstruments } = useInstrumentStore();
 
   // Fetch instruments on mount if not already loaded
@@ -92,11 +91,7 @@ export default function InstrumentSearch() {
       if (selectedGroupId) {
         addSymbolToGroup(selectedGroupId, inst.tradingsymbol);
       }
-      // Subscribe to instrument token if WebSocket is connected and token exists
-      if (status === 'connected' && inst.instrumentToken) {
-        subscribe([inst.instrumentToken]);
-        console.log(`Subscribed to existing instrument token: ${inst.instrumentToken} (${inst.tradingsymbol})`);
-      }
+      // Don't subscribe here - WatchlistPage will handle all subscriptions
       setSearchQuery('');
       setShowResults(false);
       return;
@@ -137,16 +132,8 @@ export default function InstrumentSearch() {
       addSymbolToGroup(selectedGroupId, inst.tradingsymbol);
     }
 
-    // Subscribe to instrument token via WebSocket if connected
-    if (status === 'connected' && inst.instrumentToken) {
-      console.log(`Subscribing to instrument token: ${inst.instrumentToken} (${inst.tradingsymbol}), WebSocket status: ${status}`);
-      subscribe([inst.instrumentToken]);
-    } else {
-      console.warn(`Cannot subscribe to ${inst.tradingsymbol}:`, {
-        status,
-        hasToken: !!inst.instrumentToken,
-      });
-    }
+    // Don't subscribe here - WatchlistPage will handle all subscriptions
+    // This prevents double subscriptions and the subscribe/unsubscribe loop
 
     setSearchQuery('');
     setShowResults(false);

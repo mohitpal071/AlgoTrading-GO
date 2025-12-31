@@ -67,6 +67,16 @@ export default function Header({ status, onConnect, onDisconnect }: HeaderProps)
             STRADDLE/STRANGLE
           </Link>
           <Link
+            to="/arbitrage"
+            className={`px-2 py-0.5 text-xs font-semibold rounded transition-colors ${
+              isActive('/arbitrage')
+                ? 'bg-terminal-accent text-terminal-bg'
+                : 'text-terminal-text hover:bg-terminal-border/50'
+            }`}
+          >
+            ARBITRAGE
+          </Link>
+          <Link
             to="/positions"
             className={`px-2 py-0.5 text-xs font-semibold rounded transition-colors ${
               isActive('/positions')
