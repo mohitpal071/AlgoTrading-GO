@@ -33,6 +33,7 @@ export function useWebSocket(url: string) {
       try {
         // Update options, watchlist instruments, and arbitrage stocks
         // console.log(`[useWebSocket] Calling updateOptionFromTick and updateInstrumentFromTick`);
+        console.log(tick)
         if (updateOptionFromTick) {
           updateOptionFromTick(tick);
         } else {

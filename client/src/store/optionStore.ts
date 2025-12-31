@@ -35,6 +35,7 @@ export const useOptionStore = create<OptionStore>((set, get) => ({
       const updated: OptionData = {
         ...existing,
         lastPrice: tick.lastPrice,
+        openPrice: existing.openPrice || tick.ohlc?.open || tick.lastPrice, // Track first open price or use ohlc.open
         bidPrice,
         askPrice,
         bidQty,

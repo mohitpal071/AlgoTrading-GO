@@ -72,6 +72,11 @@ export class WebSocketService {
             a: 'subscribe',
             v: this.subscribedTokens,
           }));
+          // Set mode to "full" for resubscribed tokens
+          this.ws.send(JSON.stringify({
+            a: 'mode',
+            v: ['full', this.subscribedTokens],
+          }));
         }
       };
 
@@ -517,12 +522,21 @@ export class WebSocketService {
     
     if (this.ws?.readyState === WebSocket.OPEN) {
       // Backend expects: { "a": "subscribe", "v": [tokens] }
-      const message = {
+      const subscribeMessage = {
         a: 'subscribe',
         v: tokens,
       };
-      console.log('Subscribing to tokens:', tokens, 'Message:', message);
-      this.ws.send(JSON.stringify(message));
+      console.log('Subscribing to tokens:', tokens, 'Message:', subscribeMessage);
+      this.ws.send(JSON.stringify(subscribeMessage));
+      
+      // Set mode to "full" for subscribed tokens
+      // Format: { "a": "mode", "v": ["full", tokens] }
+      const modeMessage = {
+        a: 'mode',
+        v: ['full', tokens],
+      };
+      console.log('Setting mode to full for tokens:', tokens, 'Message:', modeMessage);
+      this.ws.send(JSON.stringify(modeMessage));
     } else {
       console.warn('WebSocket not open, cannot subscribe. State:', this.ws?.readyState);
       // Store tokens for later subscription when connection is established

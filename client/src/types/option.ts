@@ -9,6 +9,7 @@ export interface OptionData {
   
   // Market Data
   lastPrice: number;
+  openPrice: number; // Day's opening price
   bidPrice: number;
   askPrice: number;
   bidQty: number;

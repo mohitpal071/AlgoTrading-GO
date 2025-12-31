@@ -1,10 +1,11 @@
-import { useMemo, useRef, useEffect } from 'react';
+import { useMemo, useRef, useEffect, useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { ColDef } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { OptionChainRow } from '../../types/option';
-import { formatPrice, formatStrike, getPriceChangeClass } from '../../utils/formatters';
+import { formatPrice, formatStrike, formatNumber, formatChange, getPriceChangeClass } from '../../utils/formatters';
+import ColumnSelector, { ColumnKey, loadColumnVisibility } from '../panels/ColumnSelector';
 
 interface OptionChainTableProps {
   chain: OptionChainRow[];
@@ -14,8 +15,10 @@ interface OptionChainTableProps {
 
 export default function OptionChainTable({ chain, underlying, onRowClick }: OptionChainTableProps) {
   const gridRef = useRef<AgGridReact>(null);
+  const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(() => loadColumnVisibility());
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
 
-  const columnDefs: ColDef[] = useMemo(() => [
+  const allColumnDefs: ColDef[] = useMemo(() => [
     {
       headerName: 'Strike',
       field: 'strike',
@@ -25,6 +28,43 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
       cellRenderer: (params: any) => (
         <span className="font-semibold">{formatStrike(params.value)}</span>
       ),
+    },
+    {
+      headerName: 'Straddle',
+      field: 'straddlePrice',
+      width: 100,
+      minWidth: 90,
+      pinned: 'left',
+      cellRenderer: (params: any) => {
+        const callPrice = params.data?.call?.lastPrice || 0;
+        const putPrice = params.data?.put?.lastPrice || 0;
+        const straddlePrice = callPrice + putPrice;
+        return straddlePrice > 0 ? formatPrice(straddlePrice) : '-';
+      },
+    },
+    {
+      headerName: 'Straddle Chg',
+      field: 'straddleChange',
+      width: 100,
+      minWidth: 90,
+      pinned: 'left',
+      cellRenderer: (params: any) => {
+        const callPrice = params.data?.call?.lastPrice || 0;
+        const putPrice = params.data?.put?.lastPrice || 0;
+        const callOpen = params.data?.call?.openPrice || 0;
+        const putOpen = params.data?.put?.openPrice || 0;
+        const currentStraddle = callPrice + putPrice;
+        const openStraddle = callOpen + putOpen;
+        const change = currentStraddle - openStraddle;
+        
+        if (openStraddle === 0 || currentStraddle === 0) return '-';
+        
+        return (
+          <span className={getPriceChangeClass(change)}>
+            {formatChange(change)}
+          </span>
+        );
+      },
     },
     {
       headerName: 'Call',
@@ -70,16 +110,6 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
           },
         },
         {
-          headerName: 'Theta',
-          field: 'call.theta',
-          flex: 1,
-          minWidth: 80,
-          cellRenderer: (params: any) => {
-            const theta = params.data?.call?.theta || 0;
-            return theta !== 0 ? theta.toFixed(2) : '-';
-          },
-        },
-        {
           headerName: 'LTP',
           field: 'call.lastPrice',
           flex: 1.2,
@@ -87,6 +117,26 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
           cellRenderer: (params: any) => {
             const price = params.data?.call?.lastPrice || 0;
             return <span className={getPriceChangeClass(price)}>{formatPrice(price)}</span>;
+          },
+        },
+        {
+          headerName: 'Volume',
+          field: 'call.volume',
+          flex: 1,
+          minWidth: 80,
+          cellRenderer: (params: any) => {
+            const volume = params.data?.call?.volume || 0;
+            return volume > 0 ? formatNumber(volume) : '-';
+          },
+        },
+        {
+          headerName: 'OI',
+          field: 'call.oi',
+          flex: 1,
+          minWidth: 80,
+          cellRenderer: (params: any) => {
+            const oi = params.data?.call?.oi || 0;
+            return oi > 0 ? formatNumber(oi) : '-';
           },
         },
       ],
@@ -102,6 +152,26 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
           cellRenderer: (params: any) => {
             const price = params.data?.put?.lastPrice || 0;
             return <span className={getPriceChangeClass(price)}>{formatPrice(price)}</span>;
+          },
+        },
+        {
+          headerName: 'Volume',
+          field: 'put.volume',
+          flex: 1,
+          minWidth: 80,
+          cellRenderer: (params: any) => {
+            const volume = params.data?.put?.volume || 0;
+            return volume > 0 ? formatNumber(volume) : '-';
+          },
+        },
+        {
+          headerName: 'OI',
+          field: 'put.oi',
+          flex: 1,
+          minWidth: 80,
+          cellRenderer: (params: any) => {
+            const oi = params.data?.put?.oi || 0;
+            return oi > 0 ? formatNumber(oi) : '-';
           },
         },
         {
@@ -135,16 +205,6 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
           },
         },
         {
-          headerName: 'Theta',
-          field: 'put.theta',
-          flex: 1,
-          minWidth: 80,
-          cellRenderer: (params: any) => {
-            const theta = params.data?.put?.theta || 0;
-            return theta !== 0 ? theta.toFixed(2) : '-';
-          },
-        },
-        {
           headerName: 'Gamma',
           field: 'put.gamma',
           flex: 1,
@@ -157,6 +217,65 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
       ],
     },
   ], []);
+
+  // Filter columns based on visibility
+  const columnDefs: ColDef[] = useMemo(() => {
+    const filtered = allColumnDefs.map(col => {
+      if (col.headerName === 'Strike' || col.headerName === 'Straddle' || col.headerName === 'Straddle Chg') {
+        return col; // Always show strike and straddle columns
+      }
+      
+      if (col.headerName === 'Call' && col.children) {
+        const filteredChildren = col.children.filter((child: ColDef) => {
+          const field = child.field as string;
+          if (field === 'call.gamma') return visibleColumns.has('call.gamma');
+          if (field === 'call.theta') return visibleColumns.has('call.theta');
+          if (field === 'call.vega') return visibleColumns.has('call.vega');
+          if (field === 'call.iv') return visibleColumns.has('call.iv');
+          if (field === 'call.lastPrice') return visibleColumns.has('call.ltp');
+          if (field === 'call.volume') return visibleColumns.has('call.volume');
+          if (field === 'call.oi') return visibleColumns.has('call.oi');
+          return false;
+        });
+        
+        if (filteredChildren.length === 0) {
+          return null; // Hide entire Call group if no columns visible
+        }
+        
+        return {
+          ...col,
+          children: filteredChildren,
+        };
+      }
+      
+      if (col.headerName === 'Put' && col.children) {
+        const filteredChildren = col.children.filter((child: ColDef) => {
+          const field = child.field as string;
+          if (field === 'put.lastPrice') return visibleColumns.has('put.ltp');
+          if (field === 'put.volume') return visibleColumns.has('put.volume');
+          if (field === 'put.oi') return visibleColumns.has('put.oi');
+          if (field === 'put.theta') return visibleColumns.has('put.theta');
+          if (field === 'put.iv') return visibleColumns.has('put.iv');
+          if (field === 'put.vega') return visibleColumns.has('put.vega');
+          if (field === 'put.gamma') return visibleColumns.has('put.gamma');
+          return false;
+        });
+        
+        if (filteredChildren.length === 0) {
+          return null; // Hide entire Put group if no columns visible
+        }
+        
+        return {
+          ...col,
+          children: filteredChildren,
+        };
+      }
+      
+      return col;
+    }).filter((col): col is ColDef => col !== null);
+    
+    return filtered;
+  }, [allColumnDefs, visibleColumns]);
 
   const defaultColDef = useMemo(() => ({
     resizable: true,
@@ -179,8 +298,33 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
     };
   }, [chain]);
 
+  // Refresh grid when columns change
+  useEffect(() => {
+    if (gridRef.current?.api) {
+      gridRef.current.api.refreshHeader();
+      gridRef.current.api.sizeColumnsToFit();
+    }
+  }, [columnDefs]);
+
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full relative">
+      {/* Column Selector Button */}
+      <button
+        onClick={() => setShowColumnSelector(true)}
+        className="absolute top-2 right-2 z-10 px-2 py-1 text-xs bg-terminal-border border border-terminal-border text-terminal-text hover:border-terminal-accent transition-colors rounded"
+        title="Select Columns"
+      >
+        Columns
+      </button>
+      
+      {showColumnSelector && (
+        <ColumnSelector
+          visibleColumns={visibleColumns}
+          onColumnsChange={setVisibleColumns}
+          onClose={() => setShowColumnSelector(false)}
+        />
+      )}
+      
       <div className="ag-theme-alpine-dark h-full w-full" style={{ fontSize: '11px' }}>
         <AgGridReact
           ref={gridRef}
