@@ -16,6 +16,7 @@ export interface OptionData {
   askQty: number;
   volume: number;
   oi: number;
+  previousOI: number; // Previous OI value for calculating change
   lastUpdated: number;
   
   // Calculated Fields

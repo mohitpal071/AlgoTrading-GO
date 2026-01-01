@@ -6,6 +6,7 @@ import { useInstrumentStore } from '../store/instrumentStore';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { ParsedInstrument } from '../services/api';
 import { OptionData } from '../types/option';
+import ColumnSelector, { ColumnKey, loadColumnVisibility } from '../components/panels/ColumnSelector';
 
 export default function OptionChainPage() {
   const { chains, getChain, setOptionData } = useOptionStore();
@@ -15,6 +16,8 @@ export default function OptionChainPage() {
   const [selectedExpiry, setSelectedExpiry] = useState<string | null>(null);
   const [availableExpiries, setAvailableExpiries] = useState<string[]>([]);
   const [selectedToken, setSelectedToken] = useState<number | undefined>();
+  const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(() => loadColumnVisibility());
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
   const currentSubscribedTokensRef = useRef<number[]>([]);
 
   const underlyings = Array.from(chains.keys());
@@ -176,6 +179,7 @@ export default function OptionChainPage() {
           askQty: 0,
           volume: 0,
           oi: 0,
+          previousOI: 0,
           lastUpdated: Date.now(),
           iv: 0,
           delta: 0,
@@ -205,6 +209,7 @@ export default function OptionChainPage() {
           askQty: 0,
           volume: 0,
           oi: 0,
+          previousOI: 0,
           lastUpdated: Date.now(),
           iv: 0,
           delta: 0,
@@ -265,6 +270,13 @@ export default function OptionChainPage() {
               handleUnderlyingChange(name);
             }}
           />
+          <button
+            onClick={() => setShowColumnSelector(true)}
+            className="px-3 py-1 text-xs bg-terminal-border border border-terminal-border text-terminal-text hover:border-terminal-accent transition-colors rounded whitespace-nowrap h-7"
+            title="Select Columns"
+          >
+            Columns
+          </button>
           {availableExpiries.length > 0 && (
             <select
               value={selectedExpiry || ''}
@@ -284,12 +296,22 @@ export default function OptionChainPage() {
         </div>
       </div>
 
+      {/* Column Selector Modal */}
+      {showColumnSelector && (
+        <ColumnSelector
+          visibleColumns={visibleColumns}
+          onColumnsChange={setVisibleColumns}
+          onClose={() => setShowColumnSelector(false)}
+        />
+      )}
+
       {/* Option Chain Table */}
       <div className="flex-1 overflow-hidden">
         {chainData.length > 0 ? (
           <OptionChainTable
             chain={chainData}
             underlying={selectedUnderlying || ''}
+            visibleColumns={visibleColumns}
             onRowClick={(token) => setSelectedToken(token)}
           />
         ) : (

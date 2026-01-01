@@ -3,7 +3,8 @@ import { ParsedInstrument } from '../services/api';
 import { useInstrumentStore } from '../store/instrumentStore';
 import { useArbitrageStore } from '../store/arbitrageStore';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
-import { formatPrice } from '../utils/formatters';
+import ArbitrageTable from '../components/tables/ArbitrageTable';
+import ArbitrageColumnSelector, { ArbitrageColumnKey, loadArbitrageColumnVisibility } from '../components/panels/ArbitrageColumnSelector';
 
 export default function ArbitragePage() {
   const { instruments, fetchInstruments } = useInstrumentStore();
@@ -19,6 +20,8 @@ export default function ArbitragePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredInstruments, setFilteredInstruments] = useState<ParsedInstrument[]>([]);
   const [showResults, setShowResults] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<Set<ArbitrageColumnKey>>(() => loadArbitrageColumnVisibility());
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
   const currentSubscribedTokensRef = useRef<number[]>([]);
 
   // Fetch instruments on mount
@@ -150,37 +153,6 @@ export default function ArbitragePage() {
     removeStock(symbol);
   };
 
-  const getArbitrageColor = (opportunity: string) => {
-    switch (opportunity) {
-      case 'BUY_NSE_SELL_BSE':
-      case 'BUY_BSE_SELL_NSE':
-        return 'text-terminal-green';
-      case 'NO_ARBITRAGE':
-        return 'text-terminal-text/50';
-      default:
-        return 'text-terminal-red';
-    }
-  };
-
-  const getArbitrageText = (opportunity: string) => {
-    switch (opportunity) {
-      case 'BUY_NSE_SELL_BSE':
-        return 'Buy NSE, Sell BSE';
-      case 'BUY_BSE_SELL_NSE':
-        return 'Buy BSE, Sell NSE';
-      case 'NO_ARBITRAGE':
-        return 'No Arbitrage';
-      case 'NSE_NOT_AVAILABLE':
-        return 'NSE Not Available';
-      case 'BSE_NOT_AVAILABLE':
-        return 'BSE Not Available';
-      case 'NO_DATA':
-        return 'No Data';
-      default:
-        return opportunity;
-    }
-  };
-
   const arbitrageStocks = getStocks();
 
   return (
@@ -195,44 +167,61 @@ export default function ArbitragePage() {
           </div>
         </div>
 
-        {/* Stock Search */}
-        <div className="relative">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => {
-              if (filteredInstruments.length > 0) {
-                setShowResults(true);
-              }
-            }}
-            placeholder="Search stocks (e.g., RELIANCE, TCS, INFY)..."
-            className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-sm text-terminal-text placeholder-terminal-text/50 focus:outline-none focus:ring-2 focus:ring-terminal-accent"
-          />
-          {showResults && filteredInstruments.length > 0 && (
-            <div className="absolute z-50 w-full mt-1 bg-terminal-bg border border-terminal-border rounded shadow-lg max-h-64 overflow-y-auto">
-              {filteredInstruments.map((inst) => (
-                <div
-                  key={inst.instrumentToken}
-                  onClick={() => handleSelectStock(inst.tradingsymbol)}
-                  className="px-3 py-2 cursor-pointer hover:bg-terminal-border/50 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold text-sm text-terminal-accent">
-                        {inst.tradingsymbol}
+        {/* Stock Search with Column Button */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => {
+                if (filteredInstruments.length > 0) {
+                  setShowResults(true);
+                }
+              }}
+              placeholder="Search stocks (e.g., RELIANCE, TCS, INFY)..."
+              className="w-full px-3 py-2 bg-terminal-bg border border-terminal-border rounded text-sm text-terminal-text placeholder-terminal-text/50 focus:outline-none focus:ring-2 focus:ring-terminal-accent"
+            />
+            {showResults && filteredInstruments.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-terminal-bg border border-terminal-border rounded shadow-lg max-h-64 overflow-y-auto">
+                {filteredInstruments.map((inst) => (
+                  <div
+                    key={inst.instrumentToken}
+                    onClick={() => handleSelectStock(inst.tradingsymbol)}
+                    className="px-3 py-2 cursor-pointer hover:bg-terminal-border/50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-semibold text-sm text-terminal-accent">
+                          {inst.tradingsymbol}
+                        </div>
+                        <div className="text-xs text-terminal-text/60">{inst.name}</div>
                       </div>
-                      <div className="text-xs text-terminal-text/60">{inst.name}</div>
+                      <span className="text-xs text-terminal-text/50 px-2 py-0.5 bg-terminal-border/50 rounded">
+                        {inst.exchange}
+                      </span>
                     </div>
-                    <span className="text-xs text-terminal-text/50 px-2 py-0.5 bg-terminal-border/50 rounded">
-                      {inst.exchange}
-                    </span>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => setShowColumnSelector(true)}
+            className="px-3 py-2 text-xs bg-terminal-border border border-terminal-border text-terminal-text hover:border-terminal-accent transition-colors rounded whitespace-nowrap"
+            title="Select Columns"
+          >
+            Columns
+          </button>
         </div>
+        
+        {showColumnSelector && (
+          <ArbitrageColumnSelector
+            visibleColumns={visibleColumns}
+            onColumnsChange={setVisibleColumns}
+            onClose={() => setShowColumnSelector(false)}
+          />
+        )}
 
         {/* Selected Stocks */}
         {arbitrageStocks.length > 0 && (
@@ -256,84 +245,19 @@ export default function ArbitragePage() {
       </div>
 
       {/* Arbitrage Table */}
-      <div className="flex-1 overflow-auto">
-        {arbitrageStocks.length === 0 && (
+      <div className="flex-1 overflow-hidden">
+        {arbitrageStocks.length === 0 ? (
           <div className="flex items-center justify-center h-full text-terminal-text/50">
             <div className="text-center">
               <p className="text-lg mb-2">No stocks selected</p>
               <p className="text-sm">Search and select stocks to view arbitrage opportunities</p>
             </div>
           </div>
-        )}
-
-        {arbitrageStocks.length > 0 && (
-          <div className="p-4">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b border-terminal-border">
-                  <th className="text-left p-2 text-xs font-semibold text-terminal-text/70">Symbol</th>
-                  <th className="text-left p-2 text-xs font-semibold text-terminal-text/70">Name</th>
-                  <th className="text-right p-2 text-xs font-semibold text-terminal-text/70">NSE Price</th>
-                  <th className="text-right p-2 text-xs font-semibold text-terminal-text/70">BSE Price</th>
-                  <th className="text-right p-2 text-xs font-semibold text-terminal-text/70">Difference</th>
-                  <th className="text-right p-2 text-xs font-semibold text-terminal-text/70">Diff %</th>
-                  <th className="text-center p-2 text-xs font-semibold text-terminal-text/70">Opportunity</th>
-                  <th className="text-right p-2 text-xs font-semibold text-terminal-text/70">NSE Volume</th>
-                  <th className="text-right p-2 text-xs font-semibold text-terminal-text/70">BSE Volume</th>
-                </tr>
-              </thead>
-              <tbody>
-                {arbitrageStocks.map((stock) => (
-                  <tr
-                    key={stock.symbol}
-                    className="border-b border-terminal-border/50 hover:bg-terminal-border/30"
-                  >
-                    <td className="p-2 text-sm font-semibold text-terminal-accent">{stock.symbol}</td>
-                    <td className="p-2 text-sm text-terminal-text/80">{stock.name || '-'}</td>
-                    <td className="p-2 text-sm text-right text-terminal-text">
-                      {stock.nse ? formatPrice(stock.nse.lastPrice) : '-'}
-                    </td>
-                    <td className="p-2 text-sm text-right text-terminal-text">
-                      {stock.bse ? formatPrice(stock.bse.lastPrice) : '-'}
-                    </td>
-                    <td
-                      className={`p-2 text-sm text-right font-semibold ${
-                        stock.priceDiff > 0
-                          ? 'text-terminal-green'
-                          : stock.priceDiff < 0
-                          ? 'text-terminal-red'
-                          : 'text-terminal-text'
-                      }`}
-                    >
-                      {stock.nse && stock.bse ? formatPrice(Math.abs(stock.priceDiff)) : '-'}
-                    </td>
-                    <td
-                      className={`p-2 text-sm text-right font-semibold ${
-                        stock.priceDiffPercent > 0
-                          ? 'text-terminal-green'
-                          : stock.priceDiffPercent < 0
-                          ? 'text-terminal-red'
-                          : 'text-terminal-text'
-                      }`}
-                    >
-                      {stock.nse && stock.bse
-                        ? `${stock.priceDiffPercent > 0 ? '+' : ''}${stock.priceDiffPercent.toFixed(2)}%`
-                        : '-'}
-                    </td>
-                    <td className={`p-2 text-sm text-center ${getArbitrageColor(stock.arbitrageOpportunity)}`}>
-                      {getArbitrageText(stock.arbitrageOpportunity)}
-                    </td>
-                    <td className="p-2 text-sm text-right text-terminal-text/70">
-                      {stock.nse ? stock.nse.volume.toLocaleString() : '-'}
-                    </td>
-                    <td className="p-2 text-sm text-right text-terminal-text/70">
-                      {stock.bse ? stock.bse.volume.toLocaleString() : '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        ) : (
+          <ArbitrageTable
+            stocks={arbitrageStocks}
+            visibleColumns={visibleColumns}
+          />
         )}
       </div>
     </div>

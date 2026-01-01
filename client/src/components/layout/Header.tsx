@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { WebSocketStatus } from '../../services/websocket';
 
@@ -9,6 +10,15 @@ interface HeaderProps {
 
 export default function Header({ status, onConnect, onDisconnect }: HeaderProps) {
   const location = useLocation();
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
   const getStatusColor = () => {
     switch (status) {
       case 'connected':
@@ -101,7 +111,7 @@ export default function Header({ status, onConnect, onDisconnect }: HeaderProps)
       
       <div className="flex items-center gap-3">
         <div className="text-xs text-terminal-text">
-          {new Date().toLocaleTimeString()}
+          {currentTime.toLocaleTimeString()}
         </div>
         {status === 'connected' ? (
           <button

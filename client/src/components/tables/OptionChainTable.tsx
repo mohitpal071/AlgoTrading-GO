@@ -1,22 +1,21 @@
-import { useMemo, useRef, useEffect, useState } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { ColDef } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { OptionChainRow } from '../../types/option';
 import { formatPrice, formatStrike, formatNumber, formatChange, getPriceChangeClass } from '../../utils/formatters';
-import ColumnSelector, { ColumnKey, loadColumnVisibility } from '../panels/ColumnSelector';
+import { ColumnKey } from '../panels/ColumnSelector';
 
 interface OptionChainTableProps {
   chain: OptionChainRow[];
   underlying: string;
+  visibleColumns: Set<ColumnKey>;
   onRowClick?: (token: number) => void;
 }
 
-export default function OptionChainTable({ chain, underlying, onRowClick }: OptionChainTableProps) {
+export default function OptionChainTable({ chain, underlying, visibleColumns, onRowClick }: OptionChainTableProps) {
   const gridRef = useRef<AgGridReact>(null);
-  const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(() => loadColumnVisibility());
-  const [showColumnSelector, setShowColumnSelector] = useState(false);
 
   const allColumnDefs: ColDef[] = useMemo(() => [
     {
@@ -139,6 +138,23 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
             return oi > 0 ? formatNumber(oi) : '-';
           },
         },
+        {
+          headerName: 'Chg in OI',
+          field: 'call.changeInOI',
+          flex: 1,
+          minWidth: 90,
+          cellRenderer: (params: any) => {
+            const call = params.data?.call;
+            if (!call || call.oi === 0) return '-';
+            const changeInOI = call.oi - (call.previousOI || 0);
+            if (changeInOI === 0) return '-';
+            return (
+              <span className={getPriceChangeClass(changeInOI)}>
+                {formatNumber(Math.abs(changeInOI))}
+              </span>
+            );
+          },
+        },
       ],
     },
     {
@@ -172,6 +188,23 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
           cellRenderer: (params: any) => {
             const oi = params.data?.put?.oi || 0;
             return oi > 0 ? formatNumber(oi) : '-';
+          },
+        },
+        {
+          headerName: 'Chg in OI',
+          field: 'put.changeInOI',
+          flex: 1,
+          minWidth: 90,
+          cellRenderer: (params: any) => {
+            const put = params.data?.put;
+            if (!put || put.oi === 0) return '-';
+            const changeInOI = put.oi - (put.previousOI || 0);
+            if (changeInOI === 0) return '-';
+            return (
+              <span className={getPriceChangeClass(changeInOI)}>
+                {formatNumber(Math.abs(changeInOI))}
+              </span>
+            );
           },
         },
         {
@@ -235,6 +268,7 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
           if (field === 'call.lastPrice') return visibleColumns.has('call.ltp');
           if (field === 'call.volume') return visibleColumns.has('call.volume');
           if (field === 'call.oi') return visibleColumns.has('call.oi');
+          if (field === 'call.changeInOI') return visibleColumns.has('call.changeInOI');
           return false;
         });
         
@@ -254,6 +288,7 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
           if (field === 'put.lastPrice') return visibleColumns.has('put.ltp');
           if (field === 'put.volume') return visibleColumns.has('put.volume');
           if (field === 'put.oi') return visibleColumns.has('put.oi');
+          if (field === 'put.changeInOI') return visibleColumns.has('put.changeInOI');
           if (field === 'put.theta') return visibleColumns.has('put.theta');
           if (field === 'put.iv') return visibleColumns.has('put.iv');
           if (field === 'put.vega') return visibleColumns.has('put.vega');
@@ -307,24 +342,7 @@ export default function OptionChainTable({ chain, underlying, onRowClick }: Opti
   }, [columnDefs]);
 
   return (
-    <div className="h-full w-full relative">
-      {/* Column Selector Button */}
-      <button
-        onClick={() => setShowColumnSelector(true)}
-        className="absolute top-2 right-2 z-10 px-2 py-1 text-xs bg-terminal-border border border-terminal-border text-terminal-text hover:border-terminal-accent transition-colors rounded"
-        title="Select Columns"
-      >
-        Columns
-      </button>
-      
-      {showColumnSelector && (
-        <ColumnSelector
-          visibleColumns={visibleColumns}
-          onColumnsChange={setVisibleColumns}
-          onClose={() => setShowColumnSelector(false)}
-        />
-      )}
-      
+    <div className="h-full w-full">
       <div className="ag-theme-alpine-dark h-full w-full" style={{ fontSize: '11px' }}>
         <AgGridReact
           ref={gridRef}

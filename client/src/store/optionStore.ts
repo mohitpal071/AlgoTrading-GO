@@ -42,6 +42,7 @@ export const useOptionStore = create<OptionStore>((set, get) => ({
         askQty,
         volume: tick.volumeTraded || tick.volume || 0,
         oi: tick.oi,
+        previousOI: existing.oi || 0, // Store previous OI before updating
         lastUpdated: tick.timestamp * 1000, // Convert to milliseconds
       };
       

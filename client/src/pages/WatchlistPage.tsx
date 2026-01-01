@@ -49,13 +49,27 @@ export default function WatchlistPage() {
 
     // Only subscribe/unsubscribe if tokens actually changed
     if (!areTokenArraysEqual(currentSubscribedTokensRef.current, tokensToSubscribe)) {
-      // Unsubscribe from previous tokens
-      if (currentSubscribedTokensRef.current.length > 0) {
-        unsubscribe(currentSubscribedTokensRef.current);
+      // Find tokens that need to be subscribed (new tokens not in current subscriptions)
+      const tokensToAdd = tokensToSubscribe.filter(
+        token => !currentSubscribedTokensRef.current.includes(token)
+      );
+
+      // Find tokens that need to be unsubscribed (removed from watchlist)
+      const tokensToRemove = currentSubscribedTokensRef.current.filter(
+        token => !tokensToSubscribe.includes(token)
+      );
+
+      // Unsubscribe only from removed tokens
+      if (tokensToRemove.length > 0) {
+        unsubscribe(tokensToRemove);
       }
 
-      // Subscribe to new tokens
-      subscribe(tokensToSubscribe);
+      // Subscribe only to new tokens (in full mode)
+      if (tokensToAdd.length > 0) {
+        subscribe(tokensToAdd);
+      }
+
+      // Update the current subscribed tokens reference
       currentSubscribedTokensRef.current = [...tokensToSubscribe];
     }
   }, [wsStatus, tokensToSubscribe, subscribe, unsubscribe]);

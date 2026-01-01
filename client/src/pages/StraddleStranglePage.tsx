@@ -215,6 +215,7 @@ export default function StraddleStranglePage() {
             askQty: 0,
             volume: 0,
             oi: 0,
+            previousOI: 0,
             lastUpdated: Date.now(),
             iv: 0,
             delta: 0,

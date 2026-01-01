@@ -8,9 +8,11 @@ export type ColumnKey =
   | 'call.ltp' 
   | 'call.volume' 
   | 'call.oi'
+  | 'call.changeInOI'
   | 'put.ltp' 
   | 'put.volume' 
   | 'put.oi' 
+  | 'put.changeInOI'
   | 'put.theta' 
   | 'put.iv' 
   | 'put.vega' 
@@ -30,9 +32,11 @@ const ALL_COLUMNS: ColumnConfig[] = [
   { key: 'call.ltp', label: 'LTP', group: 'call' },
   { key: 'call.volume', label: 'Volume', group: 'call' },
   { key: 'call.oi', label: 'OI', group: 'call' },
+  { key: 'call.changeInOI', label: 'Chg in OI', group: 'call' },
   { key: 'put.ltp', label: 'LTP', group: 'put' },
   { key: 'put.volume', label: 'Volume', group: 'put' },
   { key: 'put.oi', label: 'OI', group: 'put' },
+  { key: 'put.changeInOI', label: 'Chg in OI', group: 'put' },
   { key: 'put.theta', label: 'Theta', group: 'put' },
   { key: 'put.iv', label: 'IV', group: 'put' },
   { key: 'put.vega', label: 'Vega', group: 'put' },
